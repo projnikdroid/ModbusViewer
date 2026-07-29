@@ -1,0 +1,35 @@
+[
+    {
+        "label": "Tank Level",
+        "description": "North tank level sensor",
+        "registerType": "HoldingRegister",
+        "address": 0,
+        "format": "Float32",
+        "byteOrder": "ABCD",
+        "scale": 0.1,
+        "offset": 0,
+        "unit": "m"
+    },
+    {
+        "label": "Pump Status",
+        "registerType": "Coil",
+        "address": 0
+    },
+    {
+        "label": "Line Pressure",
+        "description": "Main line pressure transducer",
+        "registerType": "HoldingRegister",
+        "address": 10,
+        "format": "Int32Unsigned",
+        "byteOrder": "ABCD",
+        "unit": "kPa"
+    },
+    {
+        "label": "Ambient Temp",
+        "registerType": "HoldingRegister",
+        "address": 20,
+        "format": "SignedDecimal",
+        "scale": 0.1,
+        "unit": "C"
+    }
+]

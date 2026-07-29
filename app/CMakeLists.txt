@@ -1,0 +1,49 @@
+qt_policy(SET QTP0004 NEW)
+
+qt_add_executable(ModbusViewer
+    main.cpp
+)
+
+set_source_files_properties(qml/theme/Theme.qml PROPERTIES
+    QT_QML_SINGLETON_TYPE TRUE
+)
+
+qt_add_qml_module(ModbusViewer
+    URI ModbusViewer
+    VERSION 1.0
+    QML_FILES
+        qml/Main.qml
+        qml/theme/Theme.qml
+        qml/screens/ConnectionScreen.qml
+        qml/screens/MainScreen.qml
+        qml/connection/TcpSettingsPanel.qml
+        qml/connection/RtuSettingsPanel.qml
+        qml/components/DisconnectedWatermark.qml
+        qml/components/HandshakeAnimation.qml
+        qml/components/FormatPicker.qml
+        qml/dialogs/ImportTagFileDialog.qml
+    SOURCES
+        ${MODBUSVIEWER_APPLIB_SOURCES}
+)
+
+target_include_directories(ModbusViewer PRIVATE ${MODBUSVIEWER_APPLIB_INCLUDE_DIRS})
+
+target_link_libraries(ModbusViewer PRIVATE
+    Qt6::Core
+    Qt6::Gui
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::QuickControls2
+    Qt6::QuickDialogs2
+    Qt6::Network
+    Qt6::SerialPort
+    modbusviewer_core
+)
+
+# Release is a windowed app; Debug keeps a console so QML runtime errors and
+# qDebug output are actually visible. A QML TypeError in a windowed build fails
+# completely silently, which is expensive to diagnose.
+set_target_properties(ModbusViewer PROPERTIES
+    WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>
+    MACOSX_BUNDLE TRUE
+)

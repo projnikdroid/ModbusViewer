@@ -1,0 +1,5 @@
+label,description,registerType,address,format,byteOrder,scale,offset,unit
+Tank Level,North tank level sensor,HoldingRegister,0,Float32,ABCD,0.1,0,m
+Pump Status,,Coil,0,,,,,
+Line Pressure,Main line pressure transducer,HoldingRegister,10,Int32Unsigned,ABCD,1,0,kPa
+Ambient Temp,,HoldingRegister,20,SignedDecimal,ABCD,0.1,0,C

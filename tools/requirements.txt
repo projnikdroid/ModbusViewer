@@ -1,0 +1,5 @@
+# Pinned to 3.7.4: pymodbus 3.8+ deprecated the classic ModbusSlaveContext/
+# ModbusServerContext datastore API this simulator uses, in favor of an in-flux
+# SimData/SimDevice rewrite ahead of pymodbus v4. 3.7.4 is the last stable release
+# on the classic, well-documented API.
+pymodbus==3.7.4
