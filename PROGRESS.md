@@ -120,24 +120,49 @@ investigated/reproduced before fixing. 22/22 suites green (21 plus the new
    production code changed for this item. If it resurfaces, get a fresh clean
    build first before any further code reading.
 
-**Queued after the punch list, gated on explicit user go-ahead — not started:**
-version and publish the repo to the user's GitHub profile. This is
-`CLAUDE.md`/plan Decision 11's "OSS-readiness pass," previously deferred until
-core features (through M8) were done — that condition is now met. Needs, at
-minimum: turning this into an actual git repo (currently **not** one — no
-`.git` anywhere) and a first commit; `.gitignore` (`build/`, `build-release/`,
-`packaging/windows/dist/` are all local build output, not source — `dist/`
-specifically is a kept deliverable per the user's M8 request, but still doesn't
-belong in version control, so this needs the user's confirmation on where else
-to publish/attach that folder, e.g. a GitHub Release rather than the repo
-itself); a real `README.md` (currently doesn't exist) — project description,
-screenshots, build/run instructions, feature list, matching what M1's original
-plan scoped as a "docs skeleton" but never filled in as a public-facing
-README; `LICENSE` already done (M8). CI (GitHub Actions), CONTRIBUTING.md, and
-security scanning (CodeQL) are named in Decision 11 but were explicitly
-deferred past M8 — confirm with the user whether "standard GitHub profile"
-scope includes these or just README+LICENSE+.gitignore+first commit before
-starting.
+**OSS-readiness pass: done (2026-07-28), full scope.** `CLAUDE.md`/plan
+Decision 11, previously deferred until core features (through M8) were done.
+User chose full scope (not just README+LICENSE+.gitignore+first commit) and
+confirmed the actual GitHub push stays a manual step for later — this session
+only prepared the repo locally.
+
+- **Repo**: `git init -b main` (project had no `.git` anywhere before this),
+  first commit `16d1c39` — 121 files, 11,400 insertions, working tree clean.
+  Staged content scanned for secret-like patterns (API keys, tokens, private
+  key headers) before committing; none found.
+- **`.gitignore`**: `build/`, `build-release/` (local build output);
+  `packaging/windows/dist/` and `packaging/windows/*.zip` (built deliverables,
+  not source); `.claude/settings.local.json` and `.claude/scheduled_tasks.lock`
+  (personal/session state, not shared project config); plus the usual Python
+  cache and editor-artifact patterns. `.claude/skills/modbusviewer-workflow/
+  SKILL.md` **is** committed — it's project-scoped workflow documentation
+  `CLAUDE.md` itself references, not personal state.
+- **`README.md`**: feature list, requirements, build/run/test instructions,
+  dev-simulator usage, links to `PROGRESS.md`/`docs/`/`CONTRIBUTING.md`.
+  Screenshots left as an explicit "coming soon" placeholder — no fabricated
+  images. No CI/repo badges either: badge URLs need a known `owner/repo` path,
+  which doesn't exist yet since the repo isn't pushed anywhere.
+- **`CONTRIBUTING.md`**: summarizes `docs/coding-standards.md` (TDD,
+  Karpathy simplicity bias, Clean Code naming/structure rules) plus the
+  test/PR workflow.
+- **`.github/workflows/ci.yml`**: build + `ctest` on `windows-latest` via
+  `jurplel/install-qt-action`. Deliberately uses the action's default **MSVC**
+  arch rather than the MinGW kit local dev uses — the code has no
+  MinGW-specific dependency, and MSVC is the better-supported, better-tested
+  path for this action on GitHub-hosted Windows runners. Untested against a
+  real GitHub Actions run (no `gh` CLI on this machine to push/verify) — worth
+  confirming once the repo is actually pushed.
+- **`.github/workflows/codeql.yml`**: CodeQL C/C++ analysis, same Qt-install
+  approach as CI (C/C++ analysis needs the code to actually build), plus a
+  weekly scheduled run. Also unverified against a real run for the same reason.
+- **`packaging/windows/ModbusViewer-0.1.0-win64.zip`**: zipped the M8
+  `dist/` deliverable (38.7 MB) as a release-ready artifact per the user's
+  request — gitignored like `dist/` itself, sitting locally ready to attach
+  to a GitHub Release once the repo is published.
+- **Not done, by explicit user choice**: no `gh` CLI is installed on this
+  machine, so no GitHub repo was created and nothing was pushed. The user
+  will create the GitHub repo and push (`git remote add origin ...` /
+  `git push -u origin main`) themselves whenever ready.
 
 **`/modbusviewer-workflow` skill: built** (2026-07-28) at
 `.claude/skills/modbusviewer-workflow/SKILL.md` — combined session-start +

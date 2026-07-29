@@ -15,11 +15,17 @@ jobs:
       # local dev uses (see README.md/CLAUDE.md) -- the code has no MinGW-specific
       # dependency, and MSVC is the better-supported path for this action on
       # GitHub-hosted Windows runners.
+      #
+      # `mirror` pins aqtinstall to the official Qt server rather than an
+      # auto-selected mirror -- an auto-selected mirror lagging behind on a
+      # recent point release (6.11.1) caused "Failed to locate XML data" /
+      # checksum-download failures here on the first two runs.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.11.1"
           modules: "qtserialport"
+          mirror: "https://download.qt.io"
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug

@@ -18,11 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # `mirror` pins aqtinstall to the official Qt server rather than an
+      # auto-selected mirror -- see ci.yml for why.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
           version: "6.11.1"
           modules: "qtserialport"
+          mirror: "https://download.qt.io"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
