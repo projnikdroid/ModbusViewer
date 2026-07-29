@@ -4,17 +4,25 @@ on:
   push:
     branches: [main]
   pull_request:
+  schedule:
+    # Weekly, Monday 06:00 UTC -- catches new CodeQL query-pack findings even
+    # when the code itself hasn't changed.
+    - cron: "0 6 * * 1"
 
 jobs:
-  build-and-test:
+  build-test-and-analyze:
     runs-on: windows-latest
+    permissions:
+      security-events: write
+
     steps:
       - uses: actions/checkout@v4
 
       # Uses the default MSVC arch on windows-latest rather than the MinGW kit
       # local dev uses (see README.md/CLAUDE.md) -- the code has no MinGW-specific
       # dependency, and MSVC is the better-supported path for this action on
-      # GitHub-hosted Windows runners.
+      # GitHub-hosted Windows runners. `cache: true` reuses the extracted Qt SDK
+      # across runs instead of re-downloading it from Qt's CDN every time.
       #
       # Pinned to 6.10.3 rather than local dev's 6.11.1: as of 2026-07-29,
       # aqtinstall can't fetch Windows-desktop metadata for 6.11.0/6.11.1/6.12.0
@@ -31,6 +39,17 @@ jobs:
         with:
           version: "6.10.3"
           modules: "qtserialport"
+          cache: true
+
+      # CodeQL's C/C++ analysis works by watching the compiler invocations of a
+      # real build, so it has to be initialized before that build runs -- there's
+      # no separate "CodeQL build" needed, the one build below serves both this
+      # and the test step, instead of running install-qt + build twice across
+      # two separate workflows/jobs.
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: cpp
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug
@@ -41,3 +60,6 @@ jobs:
       - name: Test
         working-directory: build
         run: ctest --output-on-failure -C Debug
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

@@ -145,24 +145,46 @@ only prepared the repo locally.
 - **`CONTRIBUTING.md`**: summarizes `docs/coding-standards.md` (TDD,
   Karpathy simplicity bias, Clean Code naming/structure rules) plus the
   test/PR workflow.
-- **`.github/workflows/ci.yml`**: build + `ctest` on `windows-latest` via
-  `jurplel/install-qt-action`. Deliberately uses the action's default **MSVC**
-  arch rather than the MinGW kit local dev uses — the code has no
-  MinGW-specific dependency, and MSVC is the better-supported, better-tested
-  path for this action on GitHub-hosted Windows runners. Untested against a
-  real GitHub Actions run (no `gh` CLI on this machine to push/verify) — worth
-  confirming once the repo is actually pushed.
-- **`.github/workflows/codeql.yml`**: CodeQL C/C++ analysis, same Qt-install
-  approach as CI (C/C++ analysis needs the code to actually build), plus a
-  weekly scheduled run. Also unverified against a real run for the same reason.
+- **`.github/workflows/ci.yml`**: a single job — build + `ctest` + CodeQL C/C++
+  analysis, on `windows-latest` via `jurplel/install-qt-action`. Originally two
+  separate workflow files (`ci.yml` + `codeql.yml`), each independently
+  installing Qt and building; merged into one job on the user's suggestion,
+  since CodeQL doesn't need its own separate build — it just needs its tracer
+  active during a build, and the one build already produced for `ctest` serves
+  both. Cuts the Qt install and the compile step from twice to once per run.
+  Also added `cache: true` to `install-qt-action` so the extracted Qt SDK is
+  reused across runs instead of re-downloaded from Qt's CDN every time. Kept
+  the weekly Monday-06:00-UTC schedule trigger (was CodeQL-only) so the whole
+  pipeline, not just security scanning, gets a periodic run even with no
+  pushes. Deliberately uses the action's default **MSVC** arch rather than the
+  MinGW kit local dev uses — the code has no MinGW-specific dependency, and
+  MSVC is the better-supported path for this action on GitHub-hosted Windows
+  runners.
+  **Pinned to Qt 6.10.3, not local dev's 6.11.1**: the first real push (after
+  the user installed and authenticated `gh` CLI) failed both workflows at the
+  Qt install step — `aqtinstall` couldn't fetch Windows-desktop metadata for
+  6.11.1 ("Failed to locate XML data for Qt version"). A first fix attempt
+  (`mirror: "https://download.qt.io"` input) was itself wrong —
+  `jurplel/install-qt-action@v4` has no `mirror` input, silently ignored per
+  the run's own warning annotation, confirmed via a screenshot the user
+  shared. Root-caused properly by testing `aqt list-qt windows desktop --arch
+  <version>` directly against multiple versions from a completely different
+  network (this machine, not the GH runner): 6.11.0/6.11.1/6.12.0 all fail
+  identically, but 6.10.3, 6.8.1, and 6.5.3 all resolve fine, and `linux
+  desktop --arch 6.11.1` also resolves fine — isolating this to a
+  still-propagating CDN gap specific to Windows builds of the three newest Qt
+  point releases as of 2026-07-29, not a mirror/cache/config problem. Revisit
+  the pin (bump back to 6.11.1) once `aqt list-qt windows desktop --arch
+  6.11.1` resolves.
 - **`packaging/windows/ModbusViewer-0.1.0-win64.zip`**: zipped the M8
   `dist/` deliverable (38.7 MB) as a release-ready artifact per the user's
   request — gitignored like `dist/` itself, sitting locally ready to attach
-  to a GitHub Release once the repo is published.
-- **Not done, by explicit user choice**: no `gh` CLI is installed on this
-  machine, so no GitHub repo was created and nothing was pushed. The user
-  will create the GitHub repo and push (`git remote add origin ...` /
-  `git push -u origin main`) themselves whenever ready.
+  to a GitHub Release.
+- **Repo published**: user installed and authenticated `gh` CLI mid-session
+  (wasn't available for the initial local-only pass) and asked to proceed with
+  the actual publish. Created via `gh repo create ModbusViewer --public
+  --source=. --remote=origin --push`, now live at
+  `https://github.com/projnikdroid/ModbusViewer`.
 
 **`/modbusviewer-workflow` skill: built** (2026-07-28) at
 `.claude/skills/modbusviewer-workflow/SKILL.md` — combined session-start +
