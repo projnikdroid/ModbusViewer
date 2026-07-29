@@ -7,6 +7,28 @@ rationale behind every decision referenced here lives in the approved plan at
 
 ## Current status
 
+**First things next session:**
+1. **Check whether the merged CI+CodeQL workflow run actually passed** —
+   `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
+   for whatever's latest on `main`). It was still running when the user logged
+   off for the night (~13+ min in, longer than the earlier separate runs since
+   this one job now does Qt install + CodeQL-traced build + `ctest` + analysis
+   all in sequence — see the OSS-readiness entry below for the full saga). If
+   it failed, check logs with `gh run view <id> --log-failed` before assuming
+   it's the same already-fixed Qt-CDN issue.
+2. **UI redesign discussion — planning only, nothing implemented yet.** User
+   wants to move Favorites (and possibly Normal) toward a "modern, futuristic"
+   look: gauges/level indicators per register instead of (or alongside) the
+   current plain table row. A first concept mockup (radial gauges + a compact
+   level-bar alternate view, built directly on `Theme.qml`'s existing dark
+   palette) was shared as an Artifact and the user liked it, but explicitly
+   asked to **hold off on implementation** — next session is for surveying
+   several more directions/options before settling on one. Bring 2-3 more
+   concept variations (different gauge styles, layout density, motion
+   language) to react to, not just one. This is exploratory design work, not
+   a coded milestone yet — use plan mode once a direction is actually chosen
+   and it's time to design the real QML implementation.
+
 **M8 done — this was the last milestone in the original table.** All further
 work is either a bug fix or a new post-v1 item (see `docs/roadmap.md`).
 
