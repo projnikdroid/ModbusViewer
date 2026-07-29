@@ -16,16 +16,21 @@ jobs:
       # dependency, and MSVC is the better-supported path for this action on
       # GitHub-hosted Windows runners.
       #
-      # `mirror` pins aqtinstall to the official Qt server rather than an
-      # auto-selected mirror -- an auto-selected mirror lagging behind on a
-      # recent point release (6.11.1) caused "Failed to locate XML data" /
-      # checksum-download failures here on the first two runs.
+      # Pinned to 6.10.3 rather than local dev's 6.11.1: as of 2026-07-29,
+      # aqtinstall can't fetch Windows-desktop metadata for 6.11.0/6.11.1/6.12.0
+      # specifically ("Failed to locate XML data for Qt version") -- confirmed
+      # not a mirror-selection problem (jurplel/install-qt-action@v4 has no
+      # `mirror` input, and the same failure reproduces querying download.qt.io
+      # directly from a completely different network) and not a general aqt/
+      # network issue (linux desktop and older Windows versions like 6.10.3/
+      # 6.8.1 all resolve fine). Looks like a still-propagating CDN gap for the
+      # newest Windows point releases. Bump back to 6.11.1 once that clears --
+      # check with `aqt list-qt windows desktop --arch 6.11.1`.
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.11.1"
+          version: "6.10.3"
           modules: "qtserialport"
-          mirror: "https://download.qt.io"
 
       - name: Configure
         run: cmake -S . -B build -DCMAKE_BUILD_TYPE=Debug

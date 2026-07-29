@@ -18,14 +18,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # `mirror` pins aqtinstall to the official Qt server rather than an
-      # auto-selected mirror -- see ci.yml for why.
+      # Pinned to 6.10.3 rather than local dev's 6.11.1 -- see ci.yml for why
+      # (a still-propagating CDN gap for Windows builds of the three newest Qt
+      # point releases as of 2026-07-29, not a config issue).
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: "6.11.1"
+          version: "6.10.3"
           modules: "qtserialport"
-          mirror: "https://download.qt.io"
 
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v3
