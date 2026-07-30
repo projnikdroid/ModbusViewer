@@ -1,0 +1,78 @@
+name: Bug report
+description: Something isn't working as expected
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug! Please fill in as much
+        detail as you can — this is a single-maintainer project, and precise
+        repro steps make the difference between a same-day fix and a bug
+        that lingers.
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact steps, including which view (Normal/Favorites), register type, and connection settings if relevant.
+      placeholder: |
+        1. Connect via TCP to ...
+        2. Switch to Favorites mode
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: false
+
+  - type: dropdown
+    id: connection-type
+    attributes:
+      label: Connection type
+      options:
+        - TCP
+        - RTU (serial)
+        - Not applicable
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: ModbusViewer version
+      description: From the release you downloaded, or the commit hash if built from source.
+      placeholder: v1.1.0
+    validations:
+      required: false
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Other/Linux
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Communication log / console output
+      description: If relevant, paste the app's Communication Log panel contents, or Debug-console output if you built from source.
+      render: text
+    validations:
+      required: false
