@@ -29,6 +29,9 @@ rationale behind every decision referenced here lives in the approved plan at
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
    entry in `docs/history.md` for the full saga if it needs revisiting.
+   **Note**: item 5 below changed when CI runs going forward, so a fresh
+   `gh run list` won't show one for ordinary commits anymore — this item is
+   about that already-existing historical run, not a new one.
 4. **Bug (reported 2026-07-30, not yet investigated): Normal mode's register
    table columns don't reflow correctly on window resize.** User's report:
    the Holding Register value fields are too wide, and shrinking the window
@@ -42,6 +45,15 @@ rationale behind every decision referenced here lives in the approved plan at
    (see the M8 punch list / the M10 "values not updating" investigation in
    `docs/history.md` and this file for the pattern) — don't guess at a fix
    without confirming the actual cause first.
+5. **CI trigger narrowed (2026-07-30), per explicit user request.**
+   `.github/workflows/ci.yml` no longer runs on every push to `main` or on
+   every pull request — it was pure noise for a solo repo. Now runs only on
+   a `v*` tag push (i.e. an actual release, same as `v1.1.0`), manually via
+   `workflow_dispatch`, or the pre-existing weekly CodeQL sweep (unchanged).
+   **Known tradeoff, flagged but not resolved**: ordinary commits and PRs no
+   longer get automatic CI validation. Fine for a solo maintainer; revisit
+   (add `pull_request:` back, at least) if this project ever takes outside
+   contributions, so contributor PRs get tested automatically again.
 
 **M10-M10c: Favorites Card View — done (2026-07-29), all layers, user
 GUI-verified.** Design rationale and milestone breakdown in the
