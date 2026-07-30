@@ -29,6 +29,19 @@ rationale behind every decision referenced here lives in the approved plan at
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
    entry in `docs/history.md` for the full saga if it needs revisiting.
+4. **Bug (reported 2026-07-30, not yet investigated): Normal mode's register
+   table columns don't reflow correctly on window resize.** User's report:
+   the Holding Register value fields are too wide, and shrinking the window
+   causes the value to get hidden/clipped rather than the column resizing
+   down with it. Likely candidate:
+   `registerTableView.columnWidthProvider` in `MainScreen.qml`
+   (`column === 0 ? 90 : width - 90`) not reacting correctly to width
+   changes, or the M9d/M10c delegate's `RowLayout` (Switch/pill/TextField/⚙
+   mix) not shrinking its children properly inside a narrower column.
+   Investigate/reproduce before fixing, per this project's usual convention
+   (see the M8 punch list / the M10 "values not updating" investigation in
+   `docs/history.md` and this file for the pattern) — don't guess at a fix
+   without confirming the actual cause first.
 
 **M10-M10c: Favorites Card View — done (2026-07-29), all layers, user
 GUI-verified.** Design rationale and milestone breakdown in the
