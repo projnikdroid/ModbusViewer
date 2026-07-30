@@ -8,7 +8,13 @@ rationale behind every decision referenced here lives in the approved plan at
 ## Current status
 
 **First things next session:**
-1. **Check whether the merged CI+CodeQL workflow run actually passed** —
+1. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
+   to 1.1.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
+   recipe (`packaging/windows/README.md`), verified standalone (launched with
+   `PATH` stripped to bare `C:\Windows\System32`, same check as M8), and
+   published as a GitHub Release with the zip attached:
+   https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.1.0.
+2. **Check whether the merged CI+CodeQL workflow run actually passed** —
    `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness

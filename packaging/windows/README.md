@@ -5,6 +5,11 @@ folder anywhere and run `ModbusViewer.exe`. No Qt or MinGW install is required
 on the target machine; every dependency (Qt DLLs, the MinGW runtime, QML
 modules, plugins) is bundled alongside the executable.
 
+**Published releases**: zipped builds are attached to
+[GitHub Releases](https://github.com/projnikdroid/ModbusViewer/releases) —
+that's the download link to share, not this local `dist/`/`*.zip` (both are
+gitignored, rebuilt locally per release).
+
 ## How it was built
 
 ```powershell
