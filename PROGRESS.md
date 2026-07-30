@@ -7,14 +7,37 @@ rationale behind every decision referenced here lives in the approved plan at
 
 ## Current status
 
-**First things next session:**
-1. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
+**First things next session — do this first, per explicit user request:**
+1. **Plan a full "futuristic" UI redesign — whole app, every screen, not
+   just Favorites.** User's own framing (2026-07-30): every screen should
+   look "like coded in React" — a modern, futuristic aesthetic — explicitly
+   including the **Connection screen** (mode selection, TCP host/port
+   fields, RTU port/baud/data-bits/parity/stop-bits fields), not just the
+   main data screen this project has iterated on so far (M9d/M9e's
+   toggle-switch/pill work, M10's Favorites card view). This is planning
+   only to start — nothing implemented yet. Given the scope (every screen,
+   not one view), treat this like the M10 card-view work did: survey a few
+   concept directions first (as an Artifact, reacting to real content, in
+   this app's actual component structure) before committing to one, then use
+   plan mode once a direction is picked — don't jump straight to
+   implementation. `app/qml/theme/Theme.qml` is the existing single source
+   of palette/spacing/typography tokens; a "coded in React" look most likely
+   means: smoother motion/transitions than this app currently has anywhere,
+   more deliberate spacing/elevation (card-like grouping, shadows/borders),
+   and possibly a fresher palette than `Theme.qml`'s current dark-blue
+   scheme — confirm with the user rather than assuming. Also confirm scope:
+   does "every screen" include `ConnectionScreen.qml`'s TCP/RTU settings
+   panels specifically (`TcpSettingsPanel.qml`/`RtuSettingsPanel.qml`), the
+   main data screen's toolbar/table/Favorites views (already partially
+   modernized), and `DisconnectedWatermark.qml`/dialogs/popups too, or a
+   subset first.
+2. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
    to 1.1.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
    recipe (`packaging/windows/README.md`), verified standalone (launched with
    `PATH` stripped to bare `C:\Windows\System32`, same check as M8), and
    published as a GitHub Release with the zip attached:
    https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.1.0.
-2. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
+3. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
    (private vulnerability reporting also enabled via repo settings),
    `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/`
    (bug report + feature request forms) and `.github/PULL_REQUEST_TEMPLATE.md`
@@ -24,15 +47,15 @@ rationale behind every decision referenced here lives in the approved plan at
    so the user created `Home` manually and the other two pages were pushed
    via `git` to `https://github.com/projnikdroid/ModbusViewer.wiki.git`,
    same repo credential already used for the main repo).
-3. **Check whether the merged CI+CodeQL workflow run actually passed** —
+4. **Check whether the merged CI+CodeQL workflow run actually passed** —
    `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
    entry in `docs/history.md` for the full saga if it needs revisiting.
-   **Note**: item 5 below changed when CI runs going forward, so a fresh
+   **Note**: item 6 below changed when CI runs going forward, so a fresh
    `gh run list` won't show one for ordinary commits anymore — this item is
    about that already-existing historical run, not a new one.
-4. **Bug (reported 2026-07-30, not yet investigated): Normal mode's register
+5. **Bug (reported 2026-07-30, not yet investigated): Normal mode's register
    table columns don't reflow correctly on window resize.** User's report:
    the Holding Register value fields are too wide, and shrinking the window
    causes the value to get hidden/clipped rather than the column resizing
@@ -45,7 +68,7 @@ rationale behind every decision referenced here lives in the approved plan at
    (see the M8 punch list / the M10 "values not updating" investigation in
    `docs/history.md` and this file for the pattern) — don't guess at a fix
    without confirming the actual cause first.
-5. **CI trigger narrowed (2026-07-30), per explicit user request.**
+6. **CI trigger narrowed (2026-07-30), per explicit user request.**
    `.github/workflows/ci.yml` no longer runs on every push to `main` or on
    every pull request — it was pure noise for a solo repo. Now runs only on
    a `v*` tag push (i.e. an actual release, same as `v1.1.0`), manually via
