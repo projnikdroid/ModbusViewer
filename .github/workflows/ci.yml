@@ -1,9 +1,17 @@
 name: CI
 
 on:
+  # Deliberately not on every push/PR to main -- this project is a solo repo
+  # right now and CI on every commit was pure noise. Runs only for an actual
+  # release (a `vX.Y.Z` tag, pushed alongside a CMakeLists.txt version bump,
+  # same as the v1.1.0 release), on demand via workflow_dispatch, or the
+  # existing weekly CodeQL sweep. Revisit if this project ever takes outside
+  # contributions -- PRs from external contributors should probably get
+  # automatic CI again at that point.
   push:
-    branches: [main]
-  pull_request:
+    tags:
+      - "v*"
+  workflow_dispatch:
   schedule:
     # Weekly, Monday 06:00 UTC -- catches new CodeQL query-pack findings even
     # when the code itself hasn't changed.
