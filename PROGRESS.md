@@ -14,7 +14,17 @@ rationale behind every decision referenced here lives in the approved plan at
    `PATH` stripped to bare `C:\Windows\System32`, same check as M8), and
    published as a GitHub Release with the zip attached:
    https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.1.0.
-2. **Check whether the merged CI+CodeQL workflow run actually passed** —
+2. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
+   (private vulnerability reporting also enabled via repo settings),
+   `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/`
+   (bug report + feature request forms) and `.github/PULL_REQUEST_TEMPLATE.md`
+   — community health checklist now 100% (was 57%). Wiki populated with
+   Home/Getting-Started/Modbus-Register-Types pages (the wiki's git repo only
+   exists after a first page is created via the web UI — no API for that —
+   so the user created `Home` manually and the other two pages were pushed
+   via `git` to `https://github.com/projnikdroid/ModbusViewer.wiki.git`,
+   same repo credential already used for the main repo).
+3. **Check whether the merged CI+CodeQL workflow run actually passed** —
    `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
