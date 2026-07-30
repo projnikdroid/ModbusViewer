@@ -381,3 +381,354 @@ server down mid-poll, confirm a `communicationLogged` emission with
 `direction == Error`). All green, 21/21 total. User confirmed live Tx/Rx entries
 during both one-shot reads and continuous polling in both modes, Clear/Show/Hide
 all work, and killing the simulator mid-poll produces a visible error entry.
+
+## M8 — Polish + packaging
+
+**Done, user confirmed working.** Exact plan spec: "theme pass,
+error/stale-value states, LICENSE placeholder added, `windeployqt`/
+`macdeployqt` smoke test." Investigation found "error/stale-value states"
+needed real design, not just a QML flourish: `PollEngine::pollFailed` was a
+single global-reason signal with no target index at either emission site,
+while `RegisterTableModel`/`FavoritesModel` had no stale role at all — values
+just sat forever with zero indication once polling started failing. Added
+`PollEngine::targetFailed(int targetIndex, const QString &reason)`, mirroring
+`targetRegistersUpdated`'s per-target shape, emitted from both `handleFailure()`
+and `applyPlanResponse()`'s two decode-failure branches by iterating the failed
+plan's `covered: QList<CoveredTarget>` — so a coalesced multi-target read
+correctly marks every target it covered, not just one (test-covered
+specifically). **Normal and Favorites needed different granularity for a
+structural reason**: Normal mode is always exactly one `PollTarget` covering
+the whole visible range (so `RegisterTableModel` got a whole-range `stale`
+`Q_PROPERTY` + `markStale()`), while Favorites has one `PollTarget` per entry
+(so `FavoritesModel` got a genuine per-row `StaleRole`). `ConnectionController`
+relays `targetFailed` exactly like it already relays success — `markStale()`
+directly on the held `FavoritesModel*` in Favorites mode, or a new
+`registerReadFailed` signal (QML relays it into `registerModel.markStale()`)
+in Normal mode, since `ConnectionController` has no direct pointer for that
+side. 7 new tests: 3 in `test_poll_engine.cpp` (timeout/decode-failure/
+coalesced-failure all emit `targetFailed` correctly), 2 in
+`test_register_table_model.cpp`, 2 in `test_favorites_model.cpp`. **Two rounds
+of user feedback on the QML visuals after the first pass**: (1) whole-row/table
+opacity dimming for "stale" read as broken rather than intentional — replaced
+with bold + `Theme.warning` (amber) text on the value field itself, no
+dimming; the flash-on-update was also moved off animating the text `color`
+(which would have fought with the new stale-color binding) onto a separate
+background-tint `Rectangle` behind the row content. (2) The resting value-text
+color (`Theme.textPrimary`, a light color meant for text on this app's dark
+custom `Rectangle` backgrounds) was nearly invisible because `TextField` renders
+its own light control background via Qt Quick Controls' default style, which
+nothing in this app themes — switched to plain black. Also fixed the
+edit-vs-poll race (`Binding { when: !activeFocus }` guarding the value
+`TextField`'s `text`, on both Normal and Favorites) and the connection
+screen's TCP-panel stretching (trailing filler `Item` in
+`TcpSettingsPanel.qml`). `LICENSE` added (MIT, Nikhil Bangar). Theme pass
+needed no remediation — investigation found zero hardcoded colors anywhere
+outside `Theme.qml` already. **Packaging is a real kept deliverable, not a
+throwaway smoke test** (explicit user ask): Release build deployed via
+`windeployqt --qmldir app\qml` into `packaging/windows/dist/`, confirmed
+launching with `PATH` stripped to bare `C:\Windows\System32` (no Qt, no
+MinGW) — that folder can be copied anywhere and run standalone. Documented in
+`packaging/windows/README.md`. macOS (`macdeployqt`) untestable on this
+Windows-only machine. No new test suite this milestone (7 new cases folded
+into the existing `test_poll_engine`/`test_register_table_model`/
+`test_favorites_model` suites) — still 21/21 suites green via `ctest`. User
+confirmed the black text fix looks right in both the dev build and the
+packaged one, then reported the 5 issues captured in the next entry's punch
+list during that same testing pass.
+
+## Post-M8 punch list (2026-07-28)
+
+All 5 items closed this session. Nothing was diagnosed beyond the user's own
+description at session start — each item investigated/reproduced before
+fixing. 22/22 suites green (21 plus the new `test_rtu_feature_suite`).
+
+1. **Bug: mode-switch sometimes stalls live updates — done.**
+   Root cause found by reasoning through `PollEngine`'s generation/timer
+   bookkeeping and confirmed with a new regression test before fixing (TDD):
+   `PollEngine::setTargets()` (called on every live mode switch, via
+   `ConnectionController::startPolling`/`startPollingFavorites`, without an
+   intervening `stop()`) bumped the generation and cancelled in-flight
+   requests, then — if already running — dispatched a fresh cycle immediately.
+   But it never stopped `m_intervalTimer`. If the switch landed shortly after
+   a cycle had completed, that *old* target set's interval timer was still
+   armed and could fire `beginCycle()` a second time on top of the new
+   generation's still-unanswered request — and unlike `setTargets()` itself,
+   `beginCycle()` never calls `cancelAll()`, so the second call desynced
+   `m_requestsOutstanding` from what was actually in flight, silently wedging
+   the cycle-completion bookkeeping until an explicit `stop()` (which does
+   clear everything) reset it. Fix: `setTargets()` now stops `m_intervalTimer`
+   before dispatching the new cycle. New test in `test_poll_engine.cpp`,
+   `retargetingAfterACycleCompletesDoesNotLeaveTheOldIntervalTimerArmed`,
+   reproduces the race deterministically (short interval + immediate retarget
+   + `QTest::qWait` past the stale timer's deadline) — failed against the old
+   code (3 requests written instead of 2, the stale timer's spurious extra
+   `beginCycle()`), passes now. All 21/21 suites green.
+2. **Feature: a button to enable/disable the per-cell flash-on-update — done.**
+   Added `DisplaySettings.flashOnUpdateEnabled` (bool
+   `Q_PROPERTY`, default `true`), matching the existing `addressConvention`
+   pattern of a global display setting shared across views. `MainScreen.qml`'s
+   two `onValueChanged` handlers now gate `flashAnimation.restart()`/
+   `favFlashAnimation.restart()` behind it, and a `CheckBox { text: "Flash on
+   update" }` was added to the toolbar next to Address/Mode. No dedicated C++
+   test added — follows this codebase's existing precedent for
+   `DisplaySettings` itself (a plain property with no logic beyond
+   read/write/notify; `addressConvention` has none either). All 21/21 suites
+   still green.
+3. **Feature: default the RTU panel open — done.** Changed
+   `ConnectionController::m_connectionType`'s default from `Tcp` to `Rtu`
+   (`ConnectionScreen.qml`'s `TabBar.currentIndex` and the settings-panel
+   `StackLayout` both already derive from `ConnectionController.connectionType`,
+   so no QML change was needed — confirmed by reading `ConnectionScreen.qml`
+   first). **This broke 9 of `test_connection_controller.cpp`'s cases** (all
+   timed out at 5s waiting for `Connected`, ~45s total) — every test there
+   constructs a bare `ConnectionController` and calls `connectToDevice()`
+   against a `FakeModbusServer` (real `QTcpServer`) without ever setting
+   `connectionType`, so they were silently relying on `Tcp` being the default.
+   Caught immediately by the full `ctest` run (this is exactly what running
+   the suite after every change is for). Fixed by making those 9 tests
+   explicit — each now calls
+   `controller.setConnectionType(ConnectionController::ConnectionType::Tcp)`
+   right after construction — rather than reverting the feature, since the
+   tests' actual intent is "test TCP behavior," not "test whatever the
+   default happens to be." All 21/21 suites green after.
+4. **Test coverage: RTU has no dedicated feature test suite — done.**
+   New `tests/test_rtu_feature_suite.cpp` (6 cases). Scoped
+   deliberately narrower than `test_connection_controller.cpp`'s TCP coverage:
+   `ConnectionController`'s RTU path goes through a real, non-injectable
+   `Core::SerialTransport` (a genuine `QSerialPort`, unlike `TcpTransport` which
+   the TCP tests exercise against a real loopback `QTcpServer`) — this machine
+   has no serial hardware, so `connectToDevice()` itself stays untestable here,
+   same conclusion as M4's original finding. What *is* testable and was the
+   actual coverage gap: the read/poll loop, half-duplex enforcement, and write
+   path, all driven through genuine CRC-framed wire bytes via `FakeTransport`
+   rather than a positional/MBAP stand-in. Cases: (1)
+   `rtuIsTheDefaultConnectionTypeAndRequiresAPortNameToConnect` — pure-state
+   `canConnect()` coverage requiring no transport I/O at all, doubles as a
+   regression guard for item 3's default-to-RTU change; (2)
+   `pollingOverRtuDecodesCrcFramedResponses` — `PollEngine` +
+   `ModbusTransactionManager(FramingMode::Rtu)` decode a real CRC-framed
+   response into target values; (3)
+   `pollingOverRtuNeverExceedsOneRequestInFlight` — half-duplex windowing holds
+   with RTU framing in the loop, not just the generic non-pipelining-transport
+   case `test_poll_engine.cpp` already covered with MBAP; (4)
+   `pollingOverRtuCoalescesNearbyTargetsIntoOneRoundTrip` — coalescing survives
+   real RTU framing; (5)
+   `corruptedCrcDuringPollingTimesOutAndAdvancesTheCycleRatherThanStalling` —
+   genuinely RTU-specific (no TCP equivalent): RTU has no transaction id, so a
+   corrupted frame is indistinguishable from noise and silently dropped
+   (`ModbusRtuFramer::decodeRtuFrame`) rather than rejected-by-ID; only the
+   timeout can move the cycle forward, and it must still do so; (6)
+   `writeSingleRegisterRoundTripsOverRtuFraming` — function-code-06 round trip
+   through `ModbusTransactionManager` directly. All 6 passed on first run —
+   no bug surfaced, this was pure coverage. All 22/22 suites green.
+5. **Bug: unit field only editable for one format — closed, not
+   reproducible.** Read all three candidate sites end-to-end
+   (`FormatPicker.qml`'s `ignoresScaleOffsetUnit`, `RegisterTableModel`/
+   `FavoritesModel`'s `setFormatAt`/`formatSettingsAt`, and `Core::DisplayFormat`'s
+   enum ordering) and found nothing that could produce the reported behavior —
+   confirmed by diffing the source `.qml` against both `build/` and
+   `build-release/`'s copies *and* their compiled `qmlcache` artifacts
+   (mtimes all postdated the source, ruling out a stale-build explanation
+   too). User confirmed the symptom by description (only Unsigned Decimal
+   editable, both Normal and Favorites views) but a screenshot showed the
+   Scale/Offset/Unit row genuinely grayed out for Float32 — contradicting
+   `ignoresScaleOffsetUnit`'s Hex/Binary-only condition. Added temporary
+   `console.log` diagnostics to `ignoresScaleOffsetUnit` and the row's
+   `enabled` binding, rebuilt, and had the user re-test against that fresh
+   build: **the field now showed correctly editable for Float32.** Root cause
+   was never pinned down precisely, but the rebuild is the common factor —
+   most likely the user had been testing against an older executable (the
+   M8-era `packaging/windows/dist/ModbusViewer.exe`, or a dev build predating
+   some earlier change) rather than a stale source/cache problem, since both
+   of those were independently ruled out. Diagnostics reverted
+   (`FormatPicker.qml` back to its original form — verified via `git diff`-
+   equivalent read-back, no repo yet so done by direct comparison). No
+   production code changed for this item. If it resurfaces, get a fresh clean
+   build first before any further code reading.
+
+## OSS-readiness pass (2026-07-28)
+
+Full scope. `CLAUDE.md`/plan Decision 11, previously deferred until core
+features (through M8) were done. User chose full scope (not just
+README+LICENSE+.gitignore+first commit) and confirmed the actual GitHub push
+stays a manual step for later — this session only prepared the repo locally.
+
+- **Repo**: `git init -b main` (project had no `.git` anywhere before this),
+  first commit `16d1c39` — 121 files, 11,400 insertions, working tree clean.
+  Staged content scanned for secret-like patterns (API keys, tokens, private
+  key headers) before committing; none found.
+- **`.gitignore`**: `build/`, `build-release/` (local build output);
+  `packaging/windows/dist/` and `packaging/windows/*.zip` (built deliverables,
+  not source); `.claude/settings.local.json` and `.claude/scheduled_tasks.lock`
+  (personal/session state, not shared project config); plus the usual Python
+  cache and editor-artifact patterns. `.claude/skills/modbusviewer-workflow/
+  SKILL.md` **is** committed — it's project-scoped workflow documentation
+  `CLAUDE.md` itself references, not personal state.
+- **`README.md`**: feature list, requirements, build/run/test instructions,
+  dev-simulator usage, links to `PROGRESS.md`/`docs/`/`CONTRIBUTING.md`.
+  Screenshots left as an explicit "coming soon" placeholder — no fabricated
+  images. No CI/repo badges either: badge URLs need a known `owner/repo` path,
+  which doesn't exist yet since the repo isn't pushed anywhere.
+- **`CONTRIBUTING.md`**: summarizes `docs/coding-standards.md` (TDD,
+  Karpathy simplicity bias, Clean Code naming/structure rules) plus the
+  test/PR workflow.
+- **`.github/workflows/ci.yml`**: a single job — build + `ctest` + CodeQL C/C++
+  analysis, on `windows-latest` via `jurplel/install-qt-action`. Originally two
+  separate workflow files (`ci.yml` + `codeql.yml`), each independently
+  installing Qt and building; merged into one job on the user's suggestion,
+  since CodeQL doesn't need its own separate build — it just needs its tracer
+  active during a build, and the one build already produced for `ctest` serves
+  both. Cuts the Qt install and the compile step from twice to once per run.
+  Also added `cache: true` to `install-qt-action` so the extracted Qt SDK is
+  reused across runs instead of re-downloaded from Qt's CDN every time. Kept
+  the weekly Monday-06:00-UTC schedule trigger (was CodeQL-only) so the whole
+  pipeline, not just security scanning, gets a periodic run even with no
+  pushes. Deliberately uses the action's default **MSVC** arch rather than the
+  MinGW kit local dev uses — the code has no MinGW-specific dependency, and
+  MSVC is the better-supported path for this action on GitHub-hosted Windows
+  runners.
+  **Pinned to Qt 6.10.3, not local dev's 6.11.1**: the first real push (after
+  the user installed and authenticated `gh` CLI) failed both workflows at the
+  Qt install step — `aqtinstall` couldn't fetch Windows-desktop metadata for
+  6.11.1 ("Failed to locate XML data for Qt version"). A first fix attempt
+  (`mirror: "https://download.qt.io"` input) was itself wrong —
+  `jurplel/install-qt-action@v4` has no `mirror` input, silently ignored per
+  the run's own warning annotation, confirmed via a screenshot the user
+  shared. Root-caused properly by testing `aqt list-qt windows desktop --arch
+  <version>` directly against multiple versions from a completely different
+  network (this machine, not the GH runner): 6.11.0/6.11.1/6.12.0 all fail
+  identically, but 6.10.3, 6.8.1, and 6.5.3 all resolve fine, and `linux
+  desktop --arch 6.11.1` also resolves fine — isolating this to a
+  still-propagating CDN gap specific to Windows builds of the three newest Qt
+  point releases as of 2026-07-29, not a mirror/cache/config problem. Revisit
+  the pin (bump back to 6.11.1) once `aqt list-qt windows desktop --arch
+  6.11.1` resolves.
+- **`packaging/windows/ModbusViewer-0.1.0-win64.zip`**: zipped the M8
+  `dist/` deliverable (38.7 MB) as a release-ready artifact per the user's
+  request — gitignored like `dist/` itself, sitting locally ready to attach
+  to a GitHub Release.
+- **Repo published**: user installed and authenticated `gh` CLI mid-session
+  (wasn't available for the initial local-only pass) and asked to proceed with
+  the actual publish. Created via `gh repo create ModbusViewer --public
+  --source=. --remote=origin --push`, now live at
+  `https://github.com/projnikdroid/ModbusViewer`.
+- **`/modbusviewer-workflow` skill built**: combined session-start +
+  finish-milestone checklist (the design that used to be a "TODO next
+  session" section in `PROGRESS.md` — removed once implemented, see the
+  skill file itself for the procedure).
+
+## M9-M9e — V1.1: full Modbus register-type support (2026-07-29)
+
+**Done, user GUI-verified.** Full design rationale and the milestone
+breakdown lived in the approved plan at
+`C:\Users\projn\.claude\plans\quizzical-cuddling-origami.md` (superseded by
+the M10 plan in that same file once this series shipped). User's ask had two
+parts: (1) wire up all 4 Modbus register types (Coil/DiscreteInput/
+HoldingRegister/InputRegister), not just Holding Registers, and (2) react to
+a UI-style reference image (dark theme, pill buttons, toggle groups,
+gradient sliders) for a "modern, futuristic" look, folded into the same pass
+rather than deferred, since the boolean Coil/DiscreteInput controls part (1)
+needs *anyway* (a 1-bit value has no text-field representation) map directly
+onto that reference's toggle-switch/status-pill language.
+
+Investigation before planning found the protocol codec
+(`core/modbus/ModbusPduCodec`) and poll-scheduling layer (`Core::RegisterType`
+enum, `PollTarget.registerType`, `PollEngine::targetBitsUpdated`,
+`ReadCoalescer` grouping by `(unitId, registerType)`) already fully supported
+all four types from earlier milestones — the actual gap was narrow:
+`ConnectionController`'s public API, `RegisterTableModel`, and
+`FavoritesModel` were hardcoded/scoped to Holding Registers only, and no UI
+exposed an address-space selector. Three additional pre-existing gaps
+surfaced during planning, not previously known: `PollEngine`'s bit-decode
+path had shipped with zero test coverage; `RegisterDefinition::registerSpan()`
+ignored `registerType` entirely (a bit-type tag with a stray Float32 format
+would have reported span 2, corrupting `FavoritesModel`'s poll-target sizing);
+and `DisplaySettings::toDisplayAddress`/`toPduAddress` were hardcoded to
+`HoldingRegister`, which would have shown the wrong Modicon prefix once
+Normal mode could select other types.
+
+- **M9** (`tests/test_poll_engine.cpp`): closed the `PollEngine` bit-decode
+  test gap before building anything on top of it (TDD, no exceptions) — 3 new
+  cases covering Coil/DiscreteInput decode and a coalesced bit+word mixed
+  cycle.
+- **M9a** (`core/model/RegisterDefinition.h`, `app-lib/models/FavoritesModel`):
+  fixed the `registerSpan()` bug (`isBitRegisterType(registerType) ? 1 : ...`);
+  added bit-value storage (`Entry::bitValue`), three new roles
+  (`IsBitRole`/`BoolValueRole`/`WritableRole`), `applyBitUpdate()`,
+  `setBitAt()` (Coil-only, no-op on DiscreteInput), and a new
+  `coilWriteRequested` signal. New `isWritableRegisterType()` added to
+  `core/model/RegisterType.h/.cpp` alongside the existing
+  `isBitRegisterType()`/`readFunctionCodeFor()`, reused by both models rather
+  than duplicated. 6 new tests in `test_favorites_model.cpp`.
+- **M9b** (`app-lib/models/RegisterTableModel`): added a `registerType`
+  `Q_PROPERTY` (model-local enum matching `Core::RegisterType`'s ordinals 1:1,
+  same int-bridging idiom as `AddressConvention`), bit-value storage, the same
+  three new roles, `setBits()`/`setBitAt()` mirroring the existing
+  `setRegisters()`/`setValueAt()` split (same-shape diff-in-place vs.
+  full-reset, preserving flash-on-update), and fixed `AddressRole` to use the
+  model's own register type instead of the hardcoded `HoldingRegister`. 6 new
+  tests in `test_register_table_model.cpp`.
+- **M9c** (`app-lib/ConnectionController`): `readHoldingRegisters`/
+  `startPolling` generalized to `readRegisters(registerType, ...)`/
+  `startPolling(registerType, ...)`; new `writeSingleCoil()`; `PendingOperation`
+  enum extended with `ReadCoils`/`ReadDiscreteInputs`/`WriteSingleCoil`; a
+  second `PollEngine::targetBitsUpdated` relay connected alongside the
+  existing `targetRegistersUpdated` one (routes to `FavoritesModel::
+  applyBitUpdate()` or a new `bitsRead` signal, same pattern as the existing
+  register relay); reconnect-resume now remembers `registerType` alongside
+  address/quantity so auto-reconnect resumes into the same address space.
+  `holdingRegistersRead` was deliberately **kept**, not renamed, as the
+  generic word-register-read signal (now also covers Input Register one-shot
+  reads) — avoids unnecessary churn across QML/tests for a signal whose name
+  was already generic enough. `tests/test_connection_controller.cpp`'s
+  `FakeModbusServer::respond()` fixture hardened to branch on the request's
+  function-code byte (bit-packed response for FC01/02, request-echo for FC05,
+  existing behavior unchanged for FC03/04/06) — required before any
+  Coil/DiscreteInput test could exercise it correctly. 4 new tests, including
+  a regression guard that reconnect resumes with the *same* register type
+  that was active, not silently falling back to Holding Register.
+- **M9d** (`app\qml\screens\MainScreen.qml`, `app-lib/DisplaySettings`):
+  `DisplaySettings::toDisplayAddress`/`toPduAddress` gained a `registerType`
+  parameter (delegating to the already-register-type-aware
+  `Core::displayAddress`/`pduAddress`); new "Type:" `ComboBox` in the toolbar
+  next to Address/Mode, live-retargeting a running poll on change (confirmed
+  decision, same precedent as the existing Normal↔Favorites mode switch); the
+  register table's value column now branches per row on `isBit`/`writable`:
+  a `Switch` for Coil (writes immediately on toggle, confirmed decision,
+  matching the existing TextField's write-on-editingFinished pattern), a
+  read-only ON/OFF status `Text` for DiscreteInput, or the existing
+  `TextField` for Holding/Input Register (`readOnly` for InputRegister); the
+  format-picker gear button is hidden entirely (not shown-disabled) for bit
+  rows, since scale/offset/unit/byteOrder have no meaning for a 1-bit value.
+- **M9e** (`MainScreen.qml`): the Favorites "Add Ad-hoc" combo's
+  Coil/DiscreteInput exclusion (a deliberate v1 scope cut, see its own removed
+  comment) lifted now that a bit-value display/write path exists; the
+  Favorites list delegate got the same three-way Switch/pill/TextField
+  branching as M9d's table delegate, plus a filler `Item` so the "✕" remove
+  button stays right-aligned regardless of which control the row shows.
+
+22/22 suites green after every milestone (M9 through M9e), confirmed via full
+rebuild + `ctest --output-on-failure` each time, not just the touched suite.
+No GUI regressions in existing Holding-Register flows — `RegisterTableModel`/
+`FavoritesModel` default to `HoldingRegister`, matching pre-V1.1 behavior
+exactly when the new selector is left untouched. **User GUI-verified
+(2026-07-29)**, full checklist against the live simulator: Normal-mode Type
+selector + Modicon prefixes, Coil toggle writes immediately and reflects on
+next poll, Discrete Input/Input Register read-only, live retarget on
+register-type switch while polling, Favorites' ad-hoc combo's new
+Coil/DiscreteInput options with the same toggle/pill rows, and no regression
+in existing Holding Register flows — all confirmed working.
+
+**Reference-image UI survey that led into this work**: earlier the same
+session, the user shared a dark-themed UI reference image (pill buttons,
+toggle groups, gradient "Alarms"/"Warning" sliders) as inspiration. Three
+concept mockups for numeric register value display were built as a
+comparison Artifact — radial gauge, inline level bar, and stat card +
+sparkline — each rendered in the app's actual `Theme.qml` palette with one
+register live-updating so the user could react to motion, not just resting
+state. User picked the stat-card-with-sparkline concept, scoped to Favorites
+only; see the M10 series (next entry) for its implementation. The boolean
+Coil/DiscreteInput toggle-switch/status-pill controls built in M9d/M9e above
+already deliver that reference image's visual language for the register
+types that needed new UI in this pass; the numeric-value concepts were the
+separate, deferred half of the same ask.

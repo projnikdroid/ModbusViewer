@@ -92,33 +92,27 @@ QString formatValue(const FormatSettings &settings, const QList<quint16> &rawReg
     switch (settings.format) {
     case DisplayFormat::SignedDecimal: {
         const qint16 value = qint16(rawRegisters.first());
-        numericText = defaultScaling ? QString::number(value)
-                                      : QString::number(double(value) * settings.scale + settings.offset);
+        numericText = defaultScaling ? QString::number(value) : QString::number(numericValue(settings, rawRegisters));
         break;
     }
     case DisplayFormat::UnsignedDecimal: {
         const quint16 value = rawRegisters.first();
-        numericText = defaultScaling ? QString::number(value)
-                                      : QString::number(double(value) * settings.scale + settings.offset);
+        numericText = defaultScaling ? QString::number(value) : QString::number(numericValue(settings, rawRegisters));
         break;
     }
-    case DisplayFormat::Float32: {
-        const float value = std::bit_cast<float>(packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder));
-        numericText = QString::number(double(value) * settings.scale + settings.offset);
+    case DisplayFormat::Float32:
+        numericText = QString::number(numericValue(settings, rawRegisters));
         break;
-    }
     case DisplayFormat::Int32Signed: {
         const qint32 value = qint32(packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder));
-        numericText = defaultScaling
-            ? QString::number(qint64(value))
-            : QString::number(double(value) * settings.scale + settings.offset);
+        numericText = defaultScaling ? QString::number(qint64(value))
+                                      : QString::number(numericValue(settings, rawRegisters));
         break;
     }
     case DisplayFormat::Int32Unsigned: {
         const quint32 value = packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder);
-        numericText = defaultScaling
-            ? QString::number(qint64(value))
-            : QString::number(double(value) * settings.scale + settings.offset);
+        numericText = defaultScaling ? QString::number(qint64(value))
+                                      : QString::number(numericValue(settings, rawRegisters));
         break;
     }
     default:
@@ -126,6 +120,32 @@ QString formatValue(const FormatSettings &settings, const QList<quint16> &rawReg
     }
 
     return withUnit(numericText, settings);
+}
+
+double numericValue(const FormatSettings &settings, const QList<quint16> &rawRegisters)
+{
+    switch (settings.format) {
+    case DisplayFormat::Hex:
+    case DisplayFormat::Binary:
+        return double(rawRegisters.first());
+    case DisplayFormat::SignedDecimal:
+        return double(qint16(rawRegisters.first())) * settings.scale + settings.offset;
+    case DisplayFormat::UnsignedDecimal:
+        return double(rawRegisters.first()) * settings.scale + settings.offset;
+    case DisplayFormat::Float32: {
+        const float value = std::bit_cast<float>(packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder));
+        return double(value) * settings.scale + settings.offset;
+    }
+    case DisplayFormat::Int32Signed: {
+        const qint32 value = qint32(packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder));
+        return double(value) * settings.scale + settings.offset;
+    }
+    case DisplayFormat::Int32Unsigned: {
+        const quint32 value = packBytes(rawRegisters.at(0), rawRegisters.at(1), settings.byteOrder);
+        return double(value) * settings.scale + settings.offset;
+    }
+    }
+    return 0.0;
 }
 
 QList<quint16> parseValue(const FormatSettings &settings, const QString &text, bool *ok)

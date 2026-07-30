@@ -46,14 +46,27 @@ void DisplaySettings::setFlashOnUpdateEnabled(bool enabled)
     emit flashOnUpdateEnabledChanged();
 }
 
-int DisplaySettings::toDisplayAddress(int pduAddress) const
+DisplaySettings::FavoritesViewMode DisplaySettings::favoritesViewMode() const
 {
-    return Core::displayAddress(Core::RegisterType::HoldingRegister, pduAddress, toCoreConvention(m_addressConvention));
+    return m_favoritesViewMode;
 }
 
-int DisplaySettings::toPduAddress(int displayAddress) const
+void DisplaySettings::setFavoritesViewMode(FavoritesViewMode mode)
 {
-    return Core::pduAddress(Core::RegisterType::HoldingRegister, displayAddress, toCoreConvention(m_addressConvention));
+    if (m_favoritesViewMode == mode)
+        return;
+    m_favoritesViewMode = mode;
+    emit favoritesViewModeChanged();
+}
+
+int DisplaySettings::toDisplayAddress(int registerType, int pduAddress) const
+{
+    return Core::displayAddress(Core::RegisterType(registerType), pduAddress, toCoreConvention(m_addressConvention));
+}
+
+int DisplaySettings::toPduAddress(int registerType, int displayAddress) const
+{
+    return Core::pduAddress(Core::RegisterType(registerType), displayAddress, toCoreConvention(m_addressConvention));
 }
 
 } // namespace ModbusViewer::AppLib

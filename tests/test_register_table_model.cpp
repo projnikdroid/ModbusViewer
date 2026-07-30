@@ -21,6 +21,13 @@ private slots:
     void sameShapeUpdateStillEmitsSingleBatchedDataChanged();
     void markStaleSetsStaleAndEmitsStaleChanged();
     void setRegistersClearsStaleness();
+
+    void settingRegisterTypeResetsExistingData();
+    void setBitsPopulatesBoolValueRole();
+    void addressRoleUsesTheSelectedRegisterTypesModiconPrefix();
+    void sameShapeBitUpdateStillEmitsSingleBatchedDataChanged();
+    void setBitAtOnCoilRowEmitsCoilWriteRequested();
+    void setBitAtOnDiscreteInputRowIsANoOp();
 };
 
 namespace {
@@ -155,6 +162,87 @@ void RegisterTableModelTest::setRegistersClearsStaleness()
 
     QVERIFY(!model.stale());
     QCOMPARE(staleSpy.count(), 1);
+}
+
+void RegisterTableModelTest::settingRegisterTypeResetsExistingData()
+{
+    RegisterTableModel model;
+    model.setRegisters(0, {100, 200});
+    QCOMPARE(model.rowCount(), 2);
+
+    model.setRegisterType(RegisterTableModel::RegisterType::Coil);
+
+    QCOMPARE(model.rowCount(), 0);
+}
+
+void RegisterTableModelTest::setBitsPopulatesBoolValueRole()
+{
+    RegisterTableModel model;
+    model.setRegisterType(RegisterTableModel::RegisterType::Coil);
+    model.setBits(0, {true, false, true});
+
+    QCOMPARE(model.rowCount(), 3);
+    QCOMPARE(valueAt(model, 0), QStringLiteral("ON"));
+    QCOMPARE(valueAt(model, 1), QStringLiteral("OFF"));
+    QVERIFY(model.data(model.index(0, 0), RegisterTableModel::BoolValueRole).toBool());
+    QVERIFY(!model.data(model.index(1, 0), RegisterTableModel::BoolValueRole).toBool());
+    QVERIFY(model.data(model.index(0, 0), RegisterTableModel::IsBitRole).toBool());
+}
+
+void RegisterTableModelTest::addressRoleUsesTheSelectedRegisterTypesModiconPrefix()
+{
+    RegisterTableModel model;
+    model.setAddressConvention(RegisterTableModel::AddressConvention::Modicon);
+
+    model.setRegisterType(RegisterTableModel::RegisterType::DiscreteInput);
+    model.setBits(0, {false});
+    QCOMPARE(addressAt(model, 0), QStringLiteral("10001"));
+
+    model.setRegisterType(RegisterTableModel::RegisterType::HoldingRegister);
+    model.setRegisters(0, {0});
+    QCOMPARE(addressAt(model, 0), QStringLiteral("40001"));
+}
+
+void RegisterTableModelTest::sameShapeBitUpdateStillEmitsSingleBatchedDataChanged()
+{
+    RegisterTableModel model;
+    model.setRegisterType(RegisterTableModel::RegisterType::Coil);
+    model.setBits(0, {false, false, false, false, false});
+
+    QSignalSpy spy(&model, &RegisterTableModel::dataChanged);
+    model.setBits(0, {false, true, false, true, false});
+
+    QCOMPARE(spy.count(), 1);
+    const QModelIndex topLeft = spy.at(0).at(0).toModelIndex();
+    const QModelIndex bottomRight = spy.at(0).at(1).toModelIndex();
+    QCOMPARE(topLeft.row(), 1);
+    QCOMPARE(bottomRight.row(), 3);
+}
+
+void RegisterTableModelTest::setBitAtOnCoilRowEmitsCoilWriteRequested()
+{
+    RegisterTableModel model;
+    model.setRegisterType(RegisterTableModel::RegisterType::Coil);
+    model.setBits(5, {false});
+
+    QSignalSpy coilWriteSpy(&model, &RegisterTableModel::coilWriteRequested);
+    model.setBitAt(0, true);
+
+    QCOMPARE(coilWriteSpy.count(), 1);
+    QCOMPARE(coilWriteSpy.first().at(0).toInt(), 5);
+    QCOMPARE(coilWriteSpy.first().at(1).toBool(), true);
+}
+
+void RegisterTableModelTest::setBitAtOnDiscreteInputRowIsANoOp()
+{
+    RegisterTableModel model;
+    model.setRegisterType(RegisterTableModel::RegisterType::DiscreteInput);
+    model.setBits(5, {false});
+
+    QSignalSpy coilWriteSpy(&model, &RegisterTableModel::coilWriteRequested);
+    model.setBitAt(0, true);
+
+    QCOMPARE(coilWriteSpy.count(), 0);
 }
 
 QTEST_GUILESS_MAIN(RegisterTableModelTest)

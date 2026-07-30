@@ -32,16 +32,23 @@ QVariant RegisterTableModel::data(const QModelIndex &index, int role) const
     const LogicalRow &row = m_logicalRows.at(index.row());
     switch (role) {
     case AddressRole: {
-        const int displayStart =
-            Core::displayAddress(Core::RegisterType::HoldingRegister, row.address, coreAddressConvention());
+        const int displayStart = Core::displayAddress(coreRegisterType(), row.address, coreAddressConvention());
         if (row.span == 1)
             return QString::number(displayStart);
-        const int displayEnd = Core::displayAddress(Core::RegisterType::HoldingRegister,
-                                                     row.address + row.span - 1, coreAddressConvention());
+        const int displayEnd =
+            Core::displayAddress(coreRegisterType(), row.address + row.span - 1, coreAddressConvention());
         return QStringLiteral("%1-%2").arg(displayStart).arg(displayEnd);
     }
     case ValueRole:
+        if (Core::isBitRegisterType(coreRegisterType()))
+            return m_bitValues.value(row.address - m_startAddress) ? QStringLiteral("ON") : QStringLiteral("OFF");
         return Core::formatValue(row.settings, rawRegistersFor(row));
+    case IsBitRole:
+        return Core::isBitRegisterType(coreRegisterType());
+    case BoolValueRole:
+        return Core::isBitRegisterType(coreRegisterType()) && m_bitValues.value(row.address - m_startAddress);
+    case WritableRole:
+        return Core::isWritableRegisterType(coreRegisterType());
     default:
         return {};
     }
@@ -52,6 +59,9 @@ QHash<int, QByteArray> RegisterTableModel::roleNames() const
     return {
         {AddressRole, "address"},
         {ValueRole, "value"},
+        {IsBitRole, "isBit"},
+        {BoolValueRole, "boolValue"},
+        {WritableRole, "writable"},
     };
 }
 
@@ -100,10 +110,49 @@ void RegisterTableModel::setRegisters(int startAddress, const QList<int> &values
     endResetModel();
 }
 
+void RegisterTableModel::setBits(int startAddress, const QList<bool> &values)
+{
+    if (m_stale) {
+        m_stale = false;
+        emit staleChanged();
+    }
+
+    const bool sameShape = m_startAddress == startAddress && m_bitValues.size() == values.size();
+
+    // Same diff-in-place vs. full-reset split as setRegisters(), for the same
+    // reason: preserve flash-on-update, which needs onValueChanged to fire on an
+    // existing delegate rather than one torn down and rebuilt.
+    if (sameShape) {
+        int firstChangedRow = -1;
+        int lastChangedRow = -1;
+        for (int i = 0; i < values.size(); ++i) {
+            if (m_bitValues.at(i) == values.at(i))
+                continue;
+            m_bitValues[i] = values.at(i);
+            if (firstChangedRow < 0)
+                firstChangedRow = i;
+            lastChangedRow = i;
+        }
+
+        if (firstChangedRow >= 0)
+            emit dataChanged(index(firstChangedRow, 0), index(lastChangedRow, columnCount() - 1),
+                              {ValueRole, BoolValueRole});
+        return;
+    }
+
+    beginResetModel();
+    m_startAddress = startAddress;
+    m_bitValues = values;
+    rebuildLogicalRows();
+    endResetModel();
+}
+
 void RegisterTableModel::setValueAt(int row, const QString &text)
 {
     if (row < 0 || row >= m_logicalRows.size())
         return;
+    if (Core::isBitRegisterType(coreRegisterType()))
+        return; // bit rows go through setBitAt, not text parsing
 
     const LogicalRow &lr = m_logicalRows.at(row);
     bool ok = false;
@@ -115,11 +164,28 @@ void RegisterTableModel::setValueAt(int row, const QString &text)
         emit writeRequested(lr.address + k, int(rawValues.at(k)));
 }
 
+void RegisterTableModel::setBitAt(int row, bool value)
+{
+    if (row < 0 || row >= m_logicalRows.size())
+        return;
+    if (m_registerType != RegisterType::Coil)
+        return; // DiscreteInput is read-only; word types go through setValueAt
+
+    emit coilWriteRequested(m_logicalRows.at(row).address, value);
+}
+
+int RegisterTableModel::maxReadCountFor() const
+{
+    return Core::maxReadCountFor(coreRegisterType());
+}
+
 QVariantMap RegisterTableModel::formatSettingsAt(int row) const
 {
     QVariantMap result;
     if (row < 0 || row >= m_logicalRows.size())
         return result;
+    if (Core::isBitRegisterType(coreRegisterType()))
+        return result; // scale/offset/unit/byteOrder/format have no meaning for a bit
 
     // The requested settings, not the (possibly degraded-fallback) effective ones
     // used for rendering -- opening the picker on a temporarily-degraded row must
@@ -137,6 +203,8 @@ void RegisterTableModel::setFormatAt(int row, int format, int byteOrder, double 
                                       const QString &unit)
 {
     if (row < 0 || row >= m_logicalRows.size())
+        return;
+    if (Core::isBitRegisterType(coreRegisterType()))
         return;
 
     const int address = m_logicalRows.at(row).address;
@@ -182,10 +250,47 @@ void RegisterTableModel::setAddressConvention(AddressConvention convention)
         emit dataChanged(index(0, 0), index(m_logicalRows.size() - 1, columnCount() - 1), {AddressRole});
 }
 
+RegisterTableModel::RegisterType RegisterTableModel::registerType() const
+{
+    return m_registerType;
+}
+
+void RegisterTableModel::setRegisterType(RegisterType type)
+{
+    if (m_registerType == type)
+        return;
+
+    // Switching address space invalidates whatever was being displayed -- a stale
+    // format keyed by address from the old space (e.g. a Float32 picked for a
+    // HoldingRegister) has no meaning once the space changes.
+    beginResetModel();
+    m_registerType = type;
+    m_rawValues.clear();
+    m_bitValues.clear();
+    m_formats.clear();
+    rebuildLogicalRows();
+    endResetModel();
+
+    emit registerTypeChanged();
+}
+
 void RegisterTableModel::rebuildLogicalRows()
 {
     m_logicalRows.clear();
     m_rawIndexToRowIndex.clear();
+
+    if (Core::isBitRegisterType(coreRegisterType())) {
+        m_rawIndexToRowIndex.resize(m_bitValues.size());
+        for (int i = 0; i < m_bitValues.size(); ++i) {
+            LogicalRow row;
+            row.address = m_startAddress + i;
+            row.span = 1;
+            m_rawIndexToRowIndex[i] = i;
+            m_logicalRows.append(row);
+        }
+        return;
+    }
+
     m_rawIndexToRowIndex.resize(m_rawValues.size());
 
     int i = 0;
@@ -213,6 +318,21 @@ Core::AddressConvention RegisterTableModel::coreAddressConvention() const
 {
     return m_addressConvention == AddressConvention::Modicon ? Core::AddressConvention::Modicon
                                                               : Core::AddressConvention::Pdu;
+}
+
+Core::RegisterType RegisterTableModel::coreRegisterType() const
+{
+    switch (m_registerType) {
+    case RegisterType::Coil:
+        return Core::RegisterType::Coil;
+    case RegisterType::DiscreteInput:
+        return Core::RegisterType::DiscreteInput;
+    case RegisterType::HoldingRegister:
+        return Core::RegisterType::HoldingRegister;
+    case RegisterType::InputRegister:
+        return Core::RegisterType::InputRegister;
+    }
+    return Core::RegisterType::HoldingRegister;
 }
 
 QList<quint16> RegisterTableModel::rawRegistersFor(const LogicalRow &row) const

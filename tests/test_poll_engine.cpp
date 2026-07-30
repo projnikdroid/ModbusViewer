@@ -58,6 +58,29 @@ void respondToAllOutstanding(FakeTransport &transport, int fromChunk, quint16 fi
         respondTo(transport, i, fillValue);
 }
 
+QByteArray readBitsResponsePdu(FunctionCode functionCode, int bitCount, bool fillValue)
+{
+    QByteArray pdu;
+    pdu.append(char(quint8(functionCode)));
+    const int byteCount = (bitCount + 7) / 8;
+    pdu.append(char(byteCount));
+    for (int i = 0; i < byteCount; ++i)
+        pdu.append(char(fillValue ? 0xFF : 0x00));
+    return pdu;
+}
+
+// Bit-register counterpart to respondTo(): answers a FC01/FC02 request with every
+// requested bit set to fillValue.
+void respondToBits(FakeTransport &transport, int chunkIndex, FunctionCode functionCode, bool fillValue)
+{
+    const auto request = decodeMbapFrame(transport.writtenChunks().at(chunkIndex));
+    Q_ASSERT(request.has_value());
+
+    const int quantity = (quint8(request->pdu[3]) << 8) | quint8(request->pdu[4]);
+    transport.simulateDataReceived(encodeMbapFrame(request->transactionId, request->unitId,
+                                                    readBitsResponsePdu(functionCode, quantity, fillValue)));
+}
+
 // A Modbus exception response (function code's high bit set) so the response
 // decodes but fails, exercising applyPlanResponse's decode-failure branch
 // rather than a request timeout.
@@ -96,6 +119,10 @@ private slots:
     void timedOutRequestEmitsTargetFailedForItsTarget();
     void decodeFailureEmitsTargetFailedForItsTarget();
     void coalescedFailureEmitsTargetFailedForEveryCoveredTarget();
+
+    void pollingCoilsDecodesBitResponsesAndEmitsTargetBitsUpdated();
+    void pollingDiscreteInputsDecodesBitResponsesAndEmitsTargetBitsUpdated();
+    void coalescedBitAndWordTargetsEachEmitTheirOwnUpdateSignal();
 };
 
 void PollEngineTest::startIssuesAFirstRequestImmediately()
@@ -410,6 +437,80 @@ void PollEngineTest::coalescedFailureEmitsTargetFailedForEveryCoveredTarget()
     for (const QList<QVariant> &call : targetFailedSpy)
         failedTargetIndices.insert(call.at(0).toInt());
     QCOMPARE(failedTargetIndices, QSet<int>({0, 1, 2}));
+}
+
+// PollEngine's bit-decode path (isBitRegisterType branch in applyPlanResponse,
+// targetBitsUpdated emission) already shipped in production code before this test
+// existed -- this closes that TDD gap.
+void PollEngineTest::pollingCoilsDecodesBitResponsesAndEmitsTargetBitsUpdated()
+{
+    FakeTransport transport;
+    ModbusTransactionManager manager(&transport);
+    PollEngine engine(&manager);
+    engine.setTargets({target(0, 3, RegisterType::Coil)});
+    engine.setIntervalMs(10000);
+    QSignalSpy bitsSpy(&engine, &PollEngine::targetBitsUpdated);
+
+    engine.start();
+    respondToBits(transport, 0, FunctionCode::ReadCoils, true);
+
+    QVERIFY(bitsSpy.wait(500));
+    QCOMPARE(bitsSpy.first().at(0).toInt(), 0);   // target index
+    QCOMPARE(bitsSpy.first().at(1).toInt(), 0);   // start address
+    QCOMPARE(bitsSpy.first().at(2).value<QList<bool>>(), (QList<bool>{true, true, true}));
+}
+
+void PollEngineTest::pollingDiscreteInputsDecodesBitResponsesAndEmitsTargetBitsUpdated()
+{
+    FakeTransport transport;
+    ModbusTransactionManager manager(&transport);
+    PollEngine engine(&manager);
+    engine.setTargets({target(200, 2, RegisterType::DiscreteInput)});
+    engine.setIntervalMs(10000);
+    QSignalSpy bitsSpy(&engine, &PollEngine::targetBitsUpdated);
+
+    engine.start();
+    respondToBits(transport, 0, FunctionCode::ReadDiscreteInputs, false);
+
+    QVERIFY(bitsSpy.wait(500));
+    QCOMPARE(bitsSpy.first().at(1).toInt(), 200);
+    QCOMPARE(bitsSpy.first().at(2).value<QList<bool>>(), (QList<bool>{false, false}));
+}
+
+// Regression guard that the bit-decode path added above and the pre-existing
+// word-decode path don't cross when both kinds of target are polled in the same
+// cycle (different register types can't coalesce into a shared plan).
+void PollEngineTest::coalescedBitAndWordTargetsEachEmitTheirOwnUpdateSignal()
+{
+    FakeTransport transport;
+    transport.setSupportsPipelining(true);
+    ModbusTransactionManager manager(&transport);
+    PollEngine engine(&manager);
+    engine.setIntervalMs(10000);
+    engine.setMaxInFlight(2);
+    engine.setTargets({target(0, 2, RegisterType::Coil), target(1000, 2, RegisterType::HoldingRegister)});
+    QCOMPARE(engine.planCount(), 2);
+    QSignalSpy bitsSpy(&engine, &PollEngine::targetBitsUpdated);
+    QSignalSpy registersSpy(&engine, &PollEngine::targetRegistersUpdated);
+
+    engine.start();
+    QCOMPARE(transport.writtenChunks().size(), 2);
+
+    for (int i = 0; i < transport.writtenChunks().size(); ++i) {
+        const auto request = decodeMbapFrame(transport.writtenChunks().at(i));
+        if (quint8(request->pdu[0]) == quint8(FunctionCode::ReadCoils))
+            respondToBits(transport, i, FunctionCode::ReadCoils, true);
+        else
+            respondTo(transport, i, 42);
+    }
+
+    QTest::qWait(FlushWaitMs);
+    QCOMPARE(bitsSpy.count(), 1);
+    QCOMPARE(registersSpy.count(), 1);
+    QCOMPARE(bitsSpy.first().at(0).toInt(), 0);
+    QCOMPARE(bitsSpy.first().at(2).value<QList<bool>>(), (QList<bool>{true, true}));
+    QCOMPARE(registersSpy.first().at(0).toInt(), 1);
+    QCOMPARE(registersSpy.first().at(2).value<QList<quint16>>(), (QList<quint16>{42, 42}));
 }
 
 QTEST_GUILESS_MAIN(PollEngineTest)

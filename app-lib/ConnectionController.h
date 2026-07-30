@@ -95,12 +95,18 @@ public:
     Q_INVOKABLE void connectToDevice();
     Q_INVOKABLE void disconnectFromDevice();
 
-    Q_INVOKABLE void readHoldingRegisters(int startAddress, int quantity);
+    // registerType is Core::RegisterType's raw int (Coil/DiscreteInput/
+    // HoldingRegister/InputRegister). Bit-type reads emit bitsRead; word-type reads
+    // emit holdingRegistersRead (kept generic rather than renamed -- it already
+    // covers both Holding and Input register one-shot reads).
+    Q_INVOKABLE void readRegisters(int registerType, int startAddress, int quantity);
     Q_INVOKABLE void writeSingleRegister(int address, int value);
+    Q_INVOKABLE void writeSingleCoil(int address, bool value);
 
     // Continuous polling of a register range. Writes still go through
-    // writeSingleRegister(); the poll loop picks the new value up on its next cycle.
-    Q_INVOKABLE void startPolling(int startAddress, int quantity);
+    // writeSingleRegister()/writeSingleCoil(); the poll loop picks the new value up
+    // on its next cycle.
+    Q_INVOKABLE void startPolling(int registerType, int startAddress, int quantity);
 
     // Favorites-mode counterpart: polls whatever FavoritesModel currently holds
     // instead of a contiguous range. Exactly one of Normal/Favorites is ever active
@@ -136,7 +142,9 @@ signals:
     void stopBitsChanged();
 
     void holdingRegistersRead(int startAddress, QList<int> values);
+    void bitsRead(int startAddress, QList<bool> values);
     void singleRegisterWritten(int address, int value);
+    void singleCoilWritten(int address, bool value);
     void operationFailed(const QString &message);
 
     // Normal-mode counterpart to FavoritesModel::markStale(): Normal mode has no
@@ -185,6 +193,7 @@ private:
     // Remembered across a connection loss so polling can resume on its own once the
     // device comes back, without the user reconfiguring anything.
     bool m_resumePollingOnReconnect = false;
+    Core::RegisterType m_pollRegisterType = Core::RegisterType::HoldingRegister;
     int m_pollStartAddress = 0;
     int m_pollQuantity = 0;
 
@@ -208,9 +217,35 @@ private:
     // Tracks what kind of request is currently in flight so the transaction
     // manager's function-code-agnostic responseReceived signal can be decoded
     // correctly.
-    enum class PendingOperation { None, ReadHoldingRegisters, WriteSingleRegister };
+    enum class PendingOperation {
+        None,
+        ReadHoldingRegisters,
+        ReadInputRegisters,
+        ReadCoils,
+        ReadDiscreteInputs,
+        WriteSingleRegister,
+        WriteSingleCoil
+    };
     PendingOperation m_pendingOperation = PendingOperation::None;
     int m_pendingStartAddress = 0;
+    // Only meaningful for ReadCoils/ReadDiscreteInputs: decodeReadCoilsResponse/
+    // decodeReadDiscreteInputsResponse need the originally-requested quantity to
+    // trim the response's padding bits (a byte-packed bit response is padded out to
+    // a whole byte).
+    int m_pendingQuantity = 0;
+    // PollEngine and this controller's one-shot reads/writes share one
+    // ModbusTransactionManager, so both handleResponseReceived/handleRequestFailed
+    // and PollEngine's own handlers fire for *every* response/failure regardless of
+    // which one issued the request. PollEngine filters its own by generation;
+    // without an equivalent filter here, a poll response/timeout arriving while a
+    // one-shot request is outstanding (e.g. writing a Favorites Coil while that
+    // mode is actively polling other entries) was being misread as the answer to
+    // this controller's own pending operation, corrupting m_pendingOperation and
+    // spuriously emitting operationFailed for poll timeouts that had nothing to do
+    // with the one-shot request. Each one-shot send gets a fresh id here, in a
+    // counter space disjoint from PollEngine's generation-based ids (which are
+    // always >= 1<<32 once running), so the two can never collide.
+    quint64 m_pendingCorrelationId = 0;
 };
 
 } // namespace ModbusViewer::AppLib

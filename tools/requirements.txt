@@ -3,3 +3,6 @@
 # SimData/SimDevice rewrite ahead of pymodbus v4. 3.7.4 is the last stable release
 # on the classic, well-documented API.
 pymodbus==3.7.4
+# Required for --mode rtu (pymodbus's serial transport depends on it directly,
+# but doesn't pull it in as its own dependency).
+pyserial

@@ -23,10 +23,16 @@ struct RegisterDefinition
     FormatSettings format;
     TagSource source = TagSource::Imported;
 
-    // How many consecutive registers this tag occupies, implied by its format
-    // (e.g. 2 for Float32) rather than stored/imported separately -- there is no v1
-    // format whose span isn't already fully determined by DisplayFormat.
-    int registerSpan() const { return registerSpanFor(format.format); }
+    // How many consecutive registers this tag occupies. For bit types (Coil/
+    // DiscreteInput) this is always 1, regardless of whatever FormatSettings
+    // happens to carry -- scale/offset/byteOrder/DisplayFormat have no meaning for
+    // a 1-bit value, so a stray Float32/Int32 format (e.g. a malformed import row)
+    // must not be allowed to report a 2-register span. For word types it's implied
+    // by the format (e.g. 2 for Float32) rather than stored/imported separately.
+    int registerSpan() const
+    {
+        return isBitRegisterType(registerType) ? 1 : registerSpanFor(format.format);
+    }
 };
 
 } // namespace ModbusViewer::Core

@@ -41,6 +41,13 @@ int registerSpanFor(DisplayFormat format);
 // always show the raw bit pattern.
 QString formatValue(const FormatSettings &settings, const QList<quint16> &rawRegisters);
 
+// The bare numeric value formatValue() would otherwise stringify -- scale/offset
+// applied for the decimal-ish formats, raw unsigned register value for Hex/Binary
+// (scale/offset never apply there, same rule as formatValue()). For callers that
+// need a plottable double rather than display text (e.g. FavoritesModel's
+// sparkline history).
+double numericValue(const FormatSettings &settings, const QList<quint16> &rawRegisters);
+
 // The inverse of formatValue: parses a formatted (or plain numeric) string back into
 // raw register(s) suitable for a Modbus write. Sets *ok to false and returns an empty
 // list if text cannot be parsed for the given format.

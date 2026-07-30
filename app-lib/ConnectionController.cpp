@@ -1,5 +1,6 @@
 #include "ConnectionController.h"
 
+#include "model/RegisterType.h"
 #include "modbus/ModbusPduCodec.h"
 
 namespace ModbusViewer::AppLib {
@@ -22,6 +23,14 @@ ConnectionController::ConnectionController(QObject *parent)
                 for (quint16 value : values)
                     intValues.append(int(value));
                 emit holdingRegistersRead(startAddress, intValues);
+            });
+    connect(&m_pollEngine, &PollEngine::targetBitsUpdated, this,
+            [this](int targetIndex, int startAddress, QList<bool> values) {
+                if (m_activeFavoritesModel) {
+                    m_activeFavoritesModel->applyBitUpdate(targetIndex, startAddress, values);
+                    return;
+                }
+                emit bitsRead(startAddress, values);
             });
     connect(&m_pollEngine, &PollEngine::pollFailed, this, &ConnectionController::operationFailed);
     connect(&m_pollEngine, &PollEngine::targetFailed, this, [this](int targetIndex, const QString &reason) {
@@ -208,14 +217,15 @@ void ConnectionController::beginReconnectAttempt()
     openActiveTransport();
 }
 
-void ConnectionController::startPolling(int startAddress, int quantity)
+void ConnectionController::startPolling(int registerType, int startAddress, int quantity)
 {
+    m_pollRegisterType = RegisterType(registerType);
     m_pollStartAddress = startAddress;
     m_pollQuantity = quantity;
 
     PollTarget target;
     target.unitId = quint8(m_unitId);
-    target.registerType = RegisterType::HoldingRegister;
+    target.registerType = m_pollRegisterType;
     target.startAddress = quint16(startAddress);
     target.quantity = quint16(quantity);
 
@@ -358,13 +368,27 @@ void ConnectionController::setStopBits(int stopBits)
     emit stopBitsChanged();
 }
 
-void ConnectionController::readHoldingRegisters(int startAddress, int quantity)
+void ConnectionController::readRegisters(int registerType, int startAddress, int quantity)
 {
-    m_pendingOperation = PendingOperation::ReadHoldingRegisters;
+    const RegisterType type = RegisterType(registerType);
+    switch (type) {
+    case RegisterType::Coil:
+        m_pendingOperation = PendingOperation::ReadCoils;
+        break;
+    case RegisterType::DiscreteInput:
+        m_pendingOperation = PendingOperation::ReadDiscreteInputs;
+        break;
+    case RegisterType::HoldingRegister:
+        m_pendingOperation = PendingOperation::ReadHoldingRegisters;
+        break;
+    case RegisterType::InputRegister:
+        m_pendingOperation = PendingOperation::ReadInputRegisters;
+        break;
+    }
     m_pendingStartAddress = startAddress;
-    const QByteArray pdu =
-        encodeReadRequest(FunctionCode::ReadHoldingRegisters, quint16(startAddress), quint16(quantity));
-    m_transactionManager.sendRequest(quint8(m_unitId), pdu);
+    m_pendingQuantity = quantity;
+    const QByteArray pdu = encodeReadRequest(readFunctionCodeFor(type), quint16(startAddress), quint16(quantity));
+    m_transactionManager.sendRequest(quint8(m_unitId), pdu, ++m_pendingCorrelationId);
 }
 
 void ConnectionController::writeSingleRegister(int address, int value)
@@ -372,7 +396,15 @@ void ConnectionController::writeSingleRegister(int address, int value)
     m_pendingOperation = PendingOperation::WriteSingleRegister;
     m_pendingStartAddress = address;
     const QByteArray pdu = encodeWriteSingleRegisterRequest(quint16(address), quint16(value));
-    m_transactionManager.sendRequest(quint8(m_unitId), pdu);
+    m_transactionManager.sendRequest(quint8(m_unitId), pdu, ++m_pendingCorrelationId);
+}
+
+void ConnectionController::writeSingleCoil(int address, bool value)
+{
+    m_pendingOperation = PendingOperation::WriteSingleCoil;
+    m_pendingStartAddress = address;
+    const QByteArray pdu = encodeWriteSingleCoilRequest(quint16(address), value);
+    m_transactionManager.sendRequest(quint8(m_unitId), pdu, ++m_pendingCorrelationId);
 }
 
 void ConnectionController::setState(ConnectionState newState)
@@ -397,7 +429,7 @@ void ConnectionController::handleTransportConnectionStateChanged(bool connected)
             if (m_activeFavoritesModel)
                 startPollingFavorites(m_activeFavoritesModel);
             else
-                startPolling(m_pollStartAddress, m_pollQuantity);
+                startPolling(int(m_pollRegisterType), m_pollStartAddress, m_pollQuantity);
         }
         return;
     }
@@ -439,10 +471,15 @@ void ConnectionController::handleTransportError(const QString &message)
     setState(ConnectionState::Failed);
 }
 
-void ConnectionController::handleResponseReceived(quint64, const QByteArray &responsePdu)
+void ConnectionController::handleResponseReceived(quint64 correlationId, const QByteArray &responsePdu)
 {
-    // PollEngine tags its own requests and handles them separately; anything landing
-    // here is a one-shot read/write issued by this controller.
+    // PollEngine shares this transaction manager and connects to the same signal,
+    // so this fires for poll responses too, not just this controller's own
+    // one-shot read/write -- without this check, a poll response arriving while a
+    // one-shot request was outstanding got misdecoded as that request's answer.
+    if (correlationId != m_pendingCorrelationId)
+        return;
+
     switch (m_pendingOperation) {
     case PendingOperation::ReadHoldingRegisters: {
         const auto result = decodeReadHoldingRegistersResponse(responsePdu);
@@ -456,6 +493,36 @@ void ConnectionController::handleResponseReceived(quint64, const QByteArray &res
         emit holdingRegistersRead(m_pendingStartAddress, values);
         break;
     }
+    case PendingOperation::ReadInputRegisters: {
+        const auto result = decodeReadInputRegistersResponse(responsePdu);
+        if (!result.ok()) {
+            emit operationFailed(result.errorMessage);
+            break;
+        }
+        QList<int> values;
+        for (quint16 value : result.value.values)
+            values.append(int(value));
+        emit holdingRegistersRead(m_pendingStartAddress, values);
+        break;
+    }
+    case PendingOperation::ReadCoils: {
+        const auto result = decodeReadCoilsResponse(responsePdu, quint16(m_pendingQuantity));
+        if (!result.ok()) {
+            emit operationFailed(result.errorMessage);
+            break;
+        }
+        emit bitsRead(m_pendingStartAddress, result.value.values);
+        break;
+    }
+    case PendingOperation::ReadDiscreteInputs: {
+        const auto result = decodeReadDiscreteInputsResponse(responsePdu, quint16(m_pendingQuantity));
+        if (!result.ok()) {
+            emit operationFailed(result.errorMessage);
+            break;
+        }
+        emit bitsRead(m_pendingStartAddress, result.value.values);
+        break;
+    }
     case PendingOperation::WriteSingleRegister: {
         const auto result = decodeWriteSingleRegisterResponse(responsePdu);
         if (!result.ok()) {
@@ -465,14 +532,31 @@ void ConnectionController::handleResponseReceived(quint64, const QByteArray &res
         emit singleRegisterWritten(int(result.value.address), int(result.value.value));
         break;
     }
+    case PendingOperation::WriteSingleCoil: {
+        const auto result = decodeWriteSingleCoilResponse(responsePdu);
+        if (!result.ok()) {
+            emit operationFailed(result.errorMessage);
+            break;
+        }
+        emit singleCoilWritten(int(result.value.address), result.value.value != 0);
+        break;
+    }
     case PendingOperation::None:
         break;
     }
     m_pendingOperation = PendingOperation::None;
 }
 
-void ConnectionController::handleRequestFailed(quint64, const QString &reason)
+void ConnectionController::handleRequestFailed(quint64 correlationId, const QString &reason)
 {
+    // Same reasoning as handleResponseReceived: a poll request's timeout fires
+    // this too (PollEngine handles its own failures separately), and without this
+    // check was being misattributed as this controller's own pending operation
+    // failing -- surfacing a spurious "request timed out" in Normal mode's status
+    // even though the timeout actually belonged to an unrelated Favorites poll.
+    if (correlationId != m_pendingCorrelationId)
+        return;
+
     m_pendingOperation = PendingOperation::None;
     emit operationFailed(reason);
 }

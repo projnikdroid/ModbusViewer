@@ -29,6 +29,21 @@ bool staleAt(FavoritesModel &model, int row)
 {
     return model.data(model.index(row, 0), FavoritesModel::StaleRole).toBool();
 }
+bool boolValueAt(FavoritesModel &model, int row)
+{
+    return model.data(model.index(row, 0), FavoritesModel::BoolValueRole).toBool();
+}
+bool writableAt(FavoritesModel &model, int row)
+{
+    return model.data(model.index(row, 0), FavoritesModel::WritableRole).toBool();
+}
+QList<double> historyAt(FavoritesModel &model, int row)
+{
+    QList<double> result;
+    for (const QVariant &v : model.data(model.index(row, 0), FavoritesModel::HistoryRole).toList())
+        result.append(v.toDouble());
+    return result;
+}
 } // namespace
 
 class FavoritesModelTest : public QObject
@@ -44,6 +59,18 @@ private slots:
     void removeAtRemovesTheEntry();
     void markStaleSetsStaleRoleForOnlyThatRow();
     void applyRegisterUpdateClearsStaleness();
+
+    void addFromTagCoilTagIgnoresStrayFloat32FormatAndKeepsSpanOne();
+    void addAdHocCoilDefaultsToFalseBitValue();
+    void applyBitUpdateSetsBoolValueAndClearsStalenessForOnlyThatRow();
+    void setBitAtOnCoilEntryEmitsCoilWriteRequested();
+    void setBitAtOnDiscreteInputEntryIsANoOp();
+    void writableRoleMatchesRegisterTypeForAllFourTypes();
+
+    void applyRegisterUpdateAppendsToHistory();
+    void applyRegisterUpdateCapsHistoryAtTwentyPoints();
+    void applyRegisterUpdateOnBitEntryLeavesHistoryEmpty();
+    void setFormatAtClearsHistory();
 };
 
 void FavoritesModelTest::addFromTagCopiesFieldsAndZeroFillsSpan()
@@ -180,6 +207,138 @@ void FavoritesModelTest::applyRegisterUpdateClearsStaleness()
     favorites.applyRegisterUpdate(0, 10, {123});
 
     QVERIFY(!staleAt(favorites, 0));
+}
+
+// Regression test for the RegisterDefinition::registerSpan() bug: a bit-type tag
+// whose FormatSettings happens to carry a stray Float32 (e.g. a malformed import
+// row, since Float32 has no meaning for a 1-bit value) must still report span 1.
+void FavoritesModelTest::addFromTagCoilTagIgnoresStrayFloat32FormatAndKeepsSpanOne()
+{
+    TagDatabaseModel tagDb;
+    RegisterDefinition tag;
+    tag.label = QStringLiteral("Pump Enable");
+    tag.registerType = RegisterType::Coil;
+    tag.address = 5;
+    tag.format.format = DisplayFormat::Float32;
+    tagDb.addTags({tag});
+
+    FavoritesModel favorites;
+    favorites.addFromTag(&tagDb, 0);
+
+    const QList<PollTarget> targets = favorites.buildPollTargets(1);
+    QCOMPARE(targets.size(), 1);
+    QCOMPARE(int(targets.at(0).quantity), 1);
+}
+
+void FavoritesModelTest::addAdHocCoilDefaultsToFalseBitValue()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::Coil), 5);
+
+    QVERIFY(favorites.data(favorites.index(0, 0), FavoritesModel::IsBitRole).toBool());
+    QVERIFY(!boolValueAt(favorites, 0));
+    QCOMPARE(valueAt(favorites, 0), QStringLiteral("OFF"));
+}
+
+void FavoritesModelTest::applyBitUpdateSetsBoolValueAndClearsStalenessForOnlyThatRow()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::Coil), 5);
+    favorites.addAdHoc(int(RegisterType::Coil), 6);
+    favorites.markStale(1);
+
+    favorites.applyBitUpdate(1, 6, {true});
+
+    QVERIFY(!boolValueAt(favorites, 0));
+    QVERIFY(boolValueAt(favorites, 1));
+    QVERIFY(!staleAt(favorites, 1));
+}
+
+void FavoritesModelTest::setBitAtOnCoilEntryEmitsCoilWriteRequested()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::Coil), 5);
+
+    QSignalSpy coilWriteSpy(&favorites, &FavoritesModel::coilWriteRequested);
+    favorites.setBitAt(0, true);
+
+    QCOMPARE(coilWriteSpy.count(), 1);
+    QCOMPARE(coilWriteSpy.first().at(0).toInt(), 5);
+    QCOMPARE(coilWriteSpy.first().at(1).toBool(), true);
+}
+
+void FavoritesModelTest::setBitAtOnDiscreteInputEntryIsANoOp()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::DiscreteInput), 5);
+
+    QSignalSpy coilWriteSpy(&favorites, &FavoritesModel::coilWriteRequested);
+    favorites.setBitAt(0, true);
+
+    QCOMPARE(coilWriteSpy.count(), 0);
+}
+
+void FavoritesModelTest::writableRoleMatchesRegisterTypeForAllFourTypes()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::Coil), 1);
+    favorites.addAdHoc(int(RegisterType::DiscreteInput), 2);
+    favorites.addAdHoc(int(RegisterType::HoldingRegister), 3);
+    favorites.addAdHoc(int(RegisterType::InputRegister), 4);
+
+    QVERIFY(writableAt(favorites, 0));
+    QVERIFY(!writableAt(favorites, 1));
+    QVERIFY(writableAt(favorites, 2));
+    QVERIFY(!writableAt(favorites, 3));
+}
+
+void FavoritesModelTest::applyRegisterUpdateAppendsToHistory()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::HoldingRegister), 10);
+
+    favorites.applyRegisterUpdate(0, 10, {100});
+    favorites.applyRegisterUpdate(0, 10, {200});
+
+    QCOMPARE(historyAt(favorites, 0), (QList<double>{100.0, 200.0}));
+}
+
+void FavoritesModelTest::applyRegisterUpdateCapsHistoryAtTwentyPoints()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::HoldingRegister), 10);
+
+    for (int i = 0; i < 25; ++i)
+        favorites.applyRegisterUpdate(0, 10, {quint16(i)});
+
+    const QList<double> history = historyAt(favorites, 0);
+    QCOMPARE(history.size(), 20);
+    QCOMPARE(history.first(), 5.0); // oldest 5 (values 0..4) evicted
+    QCOMPARE(history.last(), 24.0);
+}
+
+void FavoritesModelTest::applyRegisterUpdateOnBitEntryLeavesHistoryEmpty()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::Coil), 5);
+
+    // Defensive path -- ConnectionController routes bit updates through
+    // applyBitUpdate in practice, never this method, but the guard must hold anyway.
+    favorites.applyRegisterUpdate(0, 5, {1});
+
+    QVERIFY(historyAt(favorites, 0).isEmpty());
+}
+
+void FavoritesModelTest::setFormatAtClearsHistory()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::HoldingRegister), 10);
+    favorites.applyRegisterUpdate(0, 10, {100});
+    QVERIFY(!historyAt(favorites, 0).isEmpty());
+
+    favorites.setFormatAt(0, int(DisplayFormat::UnsignedDecimal), int(ByteOrder::ABCD), 1.0, 0.0, QString());
+
+    QVERIFY(historyAt(favorites, 0).isEmpty());
 }
 
 QTEST_GUILESS_MAIN(FavoritesModelTest)

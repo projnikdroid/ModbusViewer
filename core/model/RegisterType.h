@@ -18,6 +18,10 @@ FunctionCode readFunctionCodeFor(RegisterType type);
 
 bool isBitRegisterType(RegisterType type);
 
+// Coils and holding registers accept writes; discrete inputs and input registers
+// are read-only per the Modbus spec.
+bool isWritableRegisterType(RegisterType type);
+
 // Per-request ceilings from the Modbus spec: 2000 bits or 125 registers.
 constexpr int MaxBitsPerReadRequest = 2000;
 constexpr int MaxRegistersPerReadRequest = 125;

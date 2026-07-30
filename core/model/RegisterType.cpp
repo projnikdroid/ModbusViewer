@@ -22,6 +22,11 @@ bool isBitRegisterType(RegisterType type)
     return type == RegisterType::Coil || type == RegisterType::DiscreteInput;
 }
 
+bool isWritableRegisterType(RegisterType type)
+{
+    return type == RegisterType::Coil || type == RegisterType::HoldingRegister;
+}
+
 int maxReadCountFor(RegisterType type)
 {
     return isBitRegisterType(type) ? MaxBitsPerReadRequest : MaxRegistersPerReadRequest;

@@ -26,6 +26,9 @@ private slots:
 
     void parseValueRoundTripsFormatValue_data();
     void parseValueRoundTripsFormatValue();
+
+    void numericValueMatchesFormatValueForDecimalFormats();
+    void numericValueForHexAndBinaryIsRawRegisterValue();
 };
 
 void ValueFormatterTest::registerSpanMatchesFormat()
@@ -206,6 +209,51 @@ void ValueFormatterTest::parseValueRoundTripsFormatValue()
     const QList<quint16> parsed = parseValue(settings, text, &ok);
     QVERIFY(ok);
     QCOMPARE(parsed, rawRegisters);
+}
+
+// numericValue() exists for callers (FavoritesModel's sparkline history) that need
+// a plottable double rather than formatValue()'s display string -- these values
+// mirror the raw numbers already asserted (via their stringified form) above.
+void ValueFormatterTest::numericValueMatchesFormatValueForDecimalFormats()
+{
+    FormatSettings unsignedSettings;
+    unsignedSettings.format = DisplayFormat::UnsignedDecimal;
+    QCOMPARE(numericValue(unsignedSettings, {quint16(65535)}), 65535.0);
+
+    FormatSettings signedSettings;
+    signedSettings.format = DisplayFormat::SignedDecimal;
+    QCOMPARE(numericValue(signedSettings, {quint16(0xFFFF)}), -1.0);
+
+    FormatSettings scaledSettings;
+    scaledSettings.format = DisplayFormat::UnsignedDecimal;
+    scaledSettings.scale = 0.1;
+    scaledSettings.offset = 5.0;
+    QCOMPARE(numericValue(scaledSettings, {quint16(100)}), 15.0);
+
+    FormatSettings floatSettings;
+    floatSettings.format = DisplayFormat::Float32;
+    floatSettings.byteOrder = ByteOrder::ABCD;
+    QCOMPARE(numericValue(floatSettings, {quint16(0x3FC0), quint16(0x0000)}), 1.5);
+
+    FormatSettings int32Settings;
+    int32Settings.format = DisplayFormat::Int32Unsigned;
+    int32Settings.byteOrder = ByteOrder::ABCD;
+    QCOMPARE(numericValue(int32Settings, {quint16(0x1234), quint16(0x5678)}), 305419896.0);
+}
+
+// Hex/Binary have no scale/offset semantics -- numericValue() returns the plain
+// raw register value, ignoring any scale/offset set on the FormatSettings, matching
+// formatValue()'s existing "Hex/Binary always show the raw bit pattern" rule.
+void ValueFormatterTest::numericValueForHexAndBinaryIsRawRegisterValue()
+{
+    FormatSettings settings;
+    settings.format = DisplayFormat::Hex;
+    settings.scale = 2.0;
+    settings.offset = 100.0;
+    QCOMPARE(numericValue(settings, {quint16(0x00FF)}), 255.0);
+
+    settings.format = DisplayFormat::Binary;
+    QCOMPARE(numericValue(settings, {quint16(0x00FF)}), 255.0);
 }
 
 QTEST_APPLESS_MAIN(ValueFormatterTest)

@@ -14,12 +14,24 @@ Rectangle {
 
     property bool logPanelVisible: false
 
+    // FavoritesModel's poll targets are only built at startPollingFavorites()
+    // time, not automatically on every add/remove -- without this, adding an
+    // entry while already polling in Favorites mode would silently never get
+    // polled until the user manually stops/restarts. Call after every mutation
+    // that changes which rows exist (not needed for in-place edits like
+    // setBitAt/setValueAt/setFormatAt, which don't change the target set).
+    function retargetFavoritesPollingIfActive() {
+        if (ConnectionController.polling && PollModeController.mode === 1)
+            ConnectionController.startPollingFavorites(favoritesModel)
+    }
+
     // Bridges the two distinct QML-facing AddressConvention enums (RegisterTableModel's
     // own, and DisplaySettings' global one) via their shared underlying int values.
     RegisterTableModel {
         id: registerModel
         addressConvention: DisplaySettings.addressConvention
         onWriteRequested: (address, value) => ConnectionController.writeSingleRegister(address, value)
+        onCoilWriteRequested: (address, value) => ConnectionController.writeSingleCoil(address, value)
     }
 
     FormatPicker {
@@ -39,6 +51,7 @@ Rectangle {
         id: favoritesModel
         addressConvention: DisplaySettings.addressConvention
         onWriteRequested: (address, value) => ConnectionController.writeSingleRegister(address, value)
+        onCoilWriteRequested: (address, value) => ConnectionController.writeSingleCoil(address, value)
     }
 
     TagDatabaseModel {
@@ -78,12 +91,20 @@ Rectangle {
             registerModel.setRegisters(startAddress, values)
             statusLabel.text = "Read " + values.length + " register(s) starting at " + startAddress
         }
+        function onBitsRead(startAddress, values) {
+            registerModel.setBits(startAddress, values)
+            statusLabel.text = "Read " + values.length + " bit(s) starting at " + startAddress
+        }
         function onOperationFailed(message) {
             statusLabel.text = "Error: " + message
         }
         function onSingleRegisterWritten(address, value) {
             statusLabel.text = "Wrote " + value + " to register " + address
-            ConnectionController.readHoldingRegisters(root.startAddressPdu, quantityField.value)
+            ConnectionController.readRegisters(registerModel.registerType, root.startAddressPdu, quantityField.value)
+        }
+        function onSingleCoilWritten(address, value) {
+            statusLabel.text = "Wrote " + (value ? "ON" : "OFF") + " to coil " + address
+            ConnectionController.readRegisters(registerModel.registerType, root.startAddressPdu, quantityField.value)
         }
         function onCommunicationLogged(direction, summary) {
             communicationLogModel.append(direction, summary)
@@ -113,7 +134,7 @@ Rectangle {
             if (PollModeController.mode === 1)
                 ConnectionController.startPollingFavorites(favoritesModel)
             else
-                ConnectionController.startPolling(root.startAddressPdu, quantityField.value)
+                ConnectionController.startPolling(registerModel.registerType, root.startAddressPdu, quantityField.value)
         }
     }
 
@@ -155,6 +176,7 @@ Rectangle {
                         // real source model, so the proxy row must be mapped back to
                         // a source row before the call, not passed through as-is.
                         favoritesModel.addFromTag(tagDatabaseModel, tagFilterProxy.mapRowToSource(tagDelegateRoot.index))
+                        root.retargetFavoritesPollingIfActive()
                         addFromTagPopup.close()
                     }
                 }
@@ -192,6 +214,22 @@ Rectangle {
                 model: ["Normal", "Favorites"]
                 currentIndex: PollModeController.mode
                 onActivated: (index) => PollModeController.mode = index
+            }
+
+            Label { text: "Type:"; color: Theme.textSecondary }
+            ComboBox {
+                // Values match Core::RegisterType's/RegisterTableModel::RegisterType's
+                // shared ordinal ordering, so currentIndex tracks registerType directly.
+                model: ["Coil (0x)", "Discrete Input (1x)", "Holding Register (4x)", "Input Register (3x)"]
+                currentIndex: registerModel.registerType
+                onActivated: (index) => {
+                    registerModel.registerType = index
+                    // Switching address space while a Normal-mode poll is running
+                    // retargets immediately, same as the Normal<->Favorites mode
+                    // switch above.
+                    if (ConnectionController.polling && PollModeController.mode === 0)
+                        ConnectionController.startPolling(registerModel.registerType, root.startAddressPdu, quantityField.value)
+                }
             }
 
             CheckBox {
@@ -233,27 +271,30 @@ Rectangle {
             SpinBox {
                 id: startAddressField
                 // Q_INVOKABLE calls aren't tracked as binding dependencies by QML, so
-                // each expression reads addressConvention first (comma operator) to
-                // force re-evaluation when the toggle changes -- a bare method call
-                // wouldn't refresh these on its own.
-                from: (DisplaySettings.addressConvention, DisplaySettings.toDisplayAddress(0))
-                to: (DisplaySettings.addressConvention, DisplaySettings.toDisplayAddress(65535))
-                value: (DisplaySettings.addressConvention, DisplaySettings.toDisplayAddress(root.startAddressPdu))
-                onValueModified: root.startAddressPdu = DisplaySettings.toPduAddress(value)
+                // each expression reads addressConvention/registerType first (comma
+                // operator) to force re-evaluation when either changes -- a bare
+                // method call wouldn't refresh these on its own.
+                from: (DisplaySettings.addressConvention, registerModel.registerType,
+                       DisplaySettings.toDisplayAddress(registerModel.registerType, 0))
+                to: (DisplaySettings.addressConvention, registerModel.registerType,
+                     DisplaySettings.toDisplayAddress(registerModel.registerType, 65535))
+                value: (DisplaySettings.addressConvention, registerModel.registerType,
+                        DisplaySettings.toDisplayAddress(registerModel.registerType, root.startAddressPdu))
+                onValueModified: root.startAddressPdu = DisplaySettings.toPduAddress(registerModel.registerType, value)
             }
 
             Label { text: "Quantity"; color: Theme.textSecondary }
             SpinBox {
                 id: quantityField
                 from: 1
-                to: 125
+                to: (registerModel.registerType, registerModel.maxReadCountFor())
                 value: 10
             }
 
             Button {
                 text: "Read"
                 enabled: !ConnectionController.polling
-                onClicked: ConnectionController.readHoldingRegisters(root.startAddressPdu, quantityField.value)
+                onClicked: ConnectionController.readRegisters(registerModel.registerType, root.startAddressPdu, quantityField.value)
             }
 
             ToolSeparator {}
@@ -276,7 +317,7 @@ Rectangle {
                     } else if (PollModeController.mode === 1) {
                         ConnectionController.startPollingFavorites(favoritesModel)
                     } else {
-                        ConnectionController.startPolling(root.startAddressPdu, quantityField.value)
+                        ConnectionController.startPolling(registerModel.registerType, root.startAddressPdu, quantityField.value)
                     }
                 }
             }
@@ -319,6 +360,9 @@ Rectangle {
                         required property int column
                         required property string address
                         required property string value
+                        required property bool isBit
+                        required property bool boolValue
+                        required property bool writable
 
                         implicitWidth: registerTableView.columnWidthProvider(column)
                         implicitHeight: 40
@@ -359,9 +403,30 @@ Rectangle {
                             anchors.margins: Theme.spacingSm
                             spacing: Theme.spacingMd
 
+                            // Coil: writable, so a toggle switch that writes immediately
+                            // (matches the numeric TextField's write-on-editingFinished
+                            // behavior -- a toggle click is the coil equivalent of
+                            // tabbing away from a text field).
+                            Switch {
+                                visible: delegateRoot.isBit && delegateRoot.writable
+                                checked: delegateRoot.boolValue
+                                onToggled: registerModel.setBitAt(normalFilterProxy.mapRowToSource(delegateRoot.row), checked)
+                            }
+
+                            // Discrete Input: read-only status indicator, no interaction.
+                            Text {
+                                visible: delegateRoot.isBit && !delegateRoot.writable
+                                text: delegateRoot.boolValue ? "ON" : "OFF"
+                                color: delegateRoot.boolValue ? Theme.success : Theme.textSecondary
+                                font.family: Theme.fontFamily
+                                font.bold: true
+                            }
+
                             TextField {
                                 id: valueField
+                                visible: !delegateRoot.isBit
                                 Layout.fillWidth: true
+                                readOnly: !delegateRoot.writable
                                 // registerModel.stale is whole-range: Normal mode is
                                 // always one PollTarget covering the entire visible
                                 // range, so a poll failure flags every value cell
@@ -389,8 +454,12 @@ Rectangle {
                                 }
                             }
 
+                            // Scale/offset/unit/byteOrder/format have no meaning for a
+                            // 1-bit value, so the format picker is hidden entirely (not
+                            // shown-disabled) for Coil/DiscreteInput rows.
                             Button {
                                 text: "⚙"
+                                visible: !delegateRoot.isBit
                                 flat: true
                                 Layout.preferredWidth: 32
                                 onClicked: formatPicker.openFor(normalFilterProxy.mapRowToSource(delegateRoot.row))
@@ -408,10 +477,10 @@ Rectangle {
 
                         ComboBox {
                             id: adhocRegisterTypeCombo
-                            // Coil/DiscreteInput are out of scope for v1: no bit-value
-                            // formatting path exists anywhere in the app yet (see M6c
-                            // plan notes) -- values match Core::RegisterType's ordering.
+                            // Values match Core::RegisterType's ordering.
                             model: [
+                                { text: "Coil", value: 0 },
+                                { text: "Discrete Input", value: 1 },
                                 { text: "Holding Register", value: 2 },
                                 { text: "Input Register", value: 3 }
                             ]
@@ -427,7 +496,10 @@ Rectangle {
 
                         Button {
                             text: "Add Ad-hoc"
-                            onClicked: favoritesModel.addAdHoc(adhocRegisterTypeCombo.currentValue, adhocAddressField.value)
+                            onClicked: {
+                                favoritesModel.addAdHoc(adhocRegisterTypeCombo.currentValue, adhocAddressField.value)
+                                root.retargetFavoritesPollingIfActive()
+                            }
                         }
 
                         Button {
@@ -436,7 +508,19 @@ Rectangle {
                         }
 
                         Item { Layout.fillWidth: true }
+
+                        Label { text: "View:"; color: Theme.textSecondary }
+                        ComboBox {
+                            model: ["List", "Cards"]
+                            currentIndex: DisplaySettings.favoritesViewMode
+                            onActivated: (index) => DisplaySettings.favoritesViewMode = index
+                        }
                     }
+
+                    StackLayout {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        currentIndex: DisplaySettings.favoritesViewMode
 
                     ListView {
                         id: favoritesListView
@@ -452,6 +536,9 @@ Rectangle {
                             required property string address
                             required property string value
                             required property bool stale
+                            required property bool isBit
+                            required property bool boolValue
+                            required property bool writable
 
                             width: favoritesListView.width
                             height: 40
@@ -486,9 +573,33 @@ Rectangle {
                                     Layout.preferredWidth: 160
                                 }
 
+                                // Coil: writable, so a toggle switch that writes
+                                // immediately (matches the numeric TextField's
+                                // write-on-editingFinished behavior).
+                                Switch {
+                                    visible: favDelegateRoot.isBit && favDelegateRoot.writable
+                                    checked: favDelegateRoot.boolValue
+                                    onToggled: favoritesModel.setBitAt(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index), checked)
+                                }
+
+                                // Discrete Input: read-only status indicator, no interaction.
+                                Text {
+                                    visible: favDelegateRoot.isBit && !favDelegateRoot.writable
+                                    text: favDelegateRoot.boolValue ? "ON" : "OFF"
+                                    color: favDelegateRoot.boolValue ? Theme.success : Theme.textSecondary
+                                    font.family: Theme.fontFamily
+                                    font.bold: true
+                                }
+
+                                // Keeps the "remove" button right-aligned regardless of
+                                // whether the value column is a Switch/pill or a TextField.
+                                Item { Layout.fillWidth: true; visible: favDelegateRoot.isBit }
+
                                 TextField {
                                     id: favValueField
+                                    visible: !favDelegateRoot.isBit
                                     Layout.fillWidth: true
+                                    readOnly: !favDelegateRoot.writable
                                     // Per-row, unlike Normal's whole-range staleness: each
                                     // Favorites entry is its own independent PollTarget.
                                     // Plain black, not Theme.textPrimary -- see the same
@@ -508,8 +619,12 @@ Rectangle {
                                     }
                                 }
 
+                                // Scale/offset/unit/byteOrder/format have no meaning for a
+                                // 1-bit value, so the format picker is hidden entirely for
+                                // Coil/DiscreteInput rows.
                                 Button {
                                     text: "⚙"
+                                    visible: !favDelegateRoot.isBit
                                     flat: true
                                     Layout.preferredWidth: 32
                                     onClicked: favoritesFormatPicker.openFor(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index))
@@ -519,10 +634,176 @@ Rectangle {
                                     text: "✕"
                                     flat: true
                                     Layout.preferredWidth: 32
-                                    onClicked: favoritesModel.removeAt(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index))
+                                    onClicked: {
+                                        favoritesModel.removeAt(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index))
+                                        root.retargetFavoritesPollingIfActive()
+                                    }
                                 }
                             }
                         }
+                    }
+
+                    GridView {
+                        id: favoritesGridView
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        clip: true
+                        model: favoritesFilterProxy
+                        cellWidth: 200
+                        cellHeight: 120
+
+                        delegate: Rectangle {
+                            id: cardDelegateRoot
+                            required property int index
+                            required property string label
+                            required property string address
+                            required property string value
+                            required property bool stale
+                            required property bool isBit
+                            required property bool boolValue
+                            required property bool writable
+                            required property var history
+
+                            width: favoritesGridView.cellWidth - Theme.spacingSm
+                            height: favoritesGridView.cellHeight - Theme.spacingSm
+                            color: Theme.surface
+                            radius: Theme.radiusMd
+                            border.color: Theme.border
+                            onValueChanged: if (DisplaySettings.flashOnUpdateEnabled) cardFlashAnimation.restart()
+
+                            // A brief background tint on update, declared first so it
+                            // renders behind the card's own content rather than covering it.
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: parent.radius
+                                color: Theme.accent
+                                opacity: 0
+                                NumberAnimation on opacity {
+                                    id: cardFlashAnimation
+                                    running: false
+                                    from: 0.35
+                                    to: 0
+                                    duration: 400
+                                }
+                            }
+
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: Theme.spacingSm
+                                spacing: Theme.spacingSm
+
+                                RowLayout {
+                                    spacing: Theme.spacingXs
+
+                                    Text {
+                                        text: cardDelegateRoot.label + " (" + cardDelegateRoot.address + ")"
+                                        color: Theme.textSecondary
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.fontSizeSm
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    // Scale/offset/unit/byteOrder/format have no meaning
+                                    // for a 1-bit value, so hidden entirely for bit rows.
+                                    Button {
+                                        text: "⚙"
+                                        visible: !cardDelegateRoot.isBit
+                                        flat: true
+                                        Layout.preferredWidth: 24
+                                        onClicked: favoritesFormatPicker.openFor(favoritesFilterProxy.mapRowToSource(cardDelegateRoot.index))
+                                    }
+
+                                    Button {
+                                        text: "✕"
+                                        flat: true
+                                        Layout.preferredWidth: 24
+                                        onClicked: {
+                                            favoritesModel.removeAt(favoritesFilterProxy.mapRowToSource(cardDelegateRoot.index))
+                                            root.retargetFavoritesPollingIfActive()
+                                        }
+                                    }
+                                }
+
+                                // Coil: writable toggle, matches the list view's behavior.
+                                Switch {
+                                    visible: cardDelegateRoot.isBit && cardDelegateRoot.writable
+                                    checked: cardDelegateRoot.boolValue
+                                    onToggled: favoritesModel.setBitAt(favoritesFilterProxy.mapRowToSource(cardDelegateRoot.index), checked)
+                                }
+
+                                // Discrete Input: read-only status indicator.
+                                Text {
+                                    visible: cardDelegateRoot.isBit && !cardDelegateRoot.writable
+                                    text: cardDelegateRoot.boolValue ? "ON" : "OFF"
+                                    color: cardDelegateRoot.boolValue ? Theme.success : Theme.textSecondary
+                                    font.bold: true
+                                    font.pixelSize: Theme.fontSizeLg
+                                }
+
+                                // Word types: big number + a sparkline of recent history.
+                                ColumnLayout {
+                                    visible: !cardDelegateRoot.isBit
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    spacing: Theme.spacingXs
+
+                                    Text {
+                                        text: cardDelegateRoot.value
+                                        color: cardDelegateRoot.stale ? Theme.warning : Theme.textPrimary
+                                        font.bold: true
+                                        font.pixelSize: Theme.fontSizeLg
+                                        elide: Text.ElideRight
+                                        Layout.fillWidth: true
+                                    }
+
+                                    // No severity/threshold system exists yet, so the
+                                    // sparkline is plain accent-colored chart ink, not
+                                    // status-coded -- Theme.accent is already this app's
+                                    // "live/changed data" color (the row-update flash).
+                                    Canvas {
+                                        id: sparkline
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+
+                                        onPaint: {
+                                            const ctx = getContext("2d")
+                                            ctx.reset()
+                                            const pts = cardDelegateRoot.history
+                                            if (pts.length < 2)
+                                                return // not enough history yet -- leave blank
+
+                                            let min = pts[0]
+                                            let max = pts[0]
+                                            for (const p of pts) {
+                                                if (p < min) min = p
+                                                if (p > max) max = p
+                                            }
+                                            const range = (max - min) || 1 // avoid div-by-zero when flat
+
+                                            ctx.strokeStyle = Theme.accent
+                                            ctx.lineWidth = 2
+                                            ctx.beginPath()
+                                            for (let i = 0; i < pts.length; ++i) {
+                                                const x = (i / (pts.length - 1)) * width
+                                                const y = height - ((pts[i] - min) / range) * height
+                                                if (i === 0)
+                                                    ctx.moveTo(x, y)
+                                                else
+                                                    ctx.lineTo(x, y)
+                                            }
+                                            ctx.stroke()
+                                        }
+
+                                        Connections {
+                                            target: cardDelegateRoot
+                                            function onHistoryChanged() { sparkline.requestPaint() }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     }
                 }
             }

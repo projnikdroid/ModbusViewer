@@ -6,6 +6,12 @@ namespace ModbusViewer::AppLib {
 
 using namespace ModbusViewer::Core;
 
+namespace {
+// Fixed point-count window for the Favorites card view's sparkline -- not
+// poll-interval-adaptive, just enough trend resolution for a ~150px-wide card.
+constexpr int kHistoryCapacity = 20;
+} // namespace
+
 FavoritesModel::FavoritesModel(QObject *parent)
     : QAbstractListModel(parent)
 {
@@ -33,11 +39,26 @@ QVariant FavoritesModel::data(const QModelIndex &index, int role) const
         return QString::number(
             Core::displayAddress(entry.definition.registerType, entry.definition.address, coreAddressConvention()));
     case ValueRole:
-        return Core::formatValue(entry.definition.format, entry.rawValues);
+        return isBitRegisterType(entry.definition.registerType)
+            ? QVariant(entry.bitValue ? QStringLiteral("ON") : QStringLiteral("OFF"))
+            : QVariant(Core::formatValue(entry.definition.format, entry.rawValues));
     case UnitRole:
         return entry.definition.format.unit;
     case StaleRole:
         return entry.stale;
+    case IsBitRole:
+        return isBitRegisterType(entry.definition.registerType);
+    case BoolValueRole:
+        return entry.bitValue;
+    case WritableRole:
+        return isWritableRegisterType(entry.definition.registerType);
+    case HistoryRole: {
+        QVariantList list;
+        list.reserve(entry.history.size());
+        for (double value : entry.history)
+            list.append(value);
+        return list;
+    }
     default:
         return {};
     }
@@ -52,6 +73,10 @@ QHash<int, QByteArray> FavoritesModel::roleNames() const
         {ValueRole, "value"},
         {UnitRole, "unit"},
         {StaleRole, "stale"},
+        {IsBitRole, "isBit"},
+        {BoolValueRole, "boolValue"},
+        {WritableRole, "writable"},
+        {HistoryRole, "history"},
     };
 }
 
@@ -62,7 +87,10 @@ void FavoritesModel::addFromTag(TagDatabaseModel *tagModel, int row)
 
     Entry entry;
     entry.definition = tagModel->tagAt(row);
-    entry.rawValues = QList<quint16>(entry.definition.registerSpan(), 0);
+    if (isBitRegisterType(entry.definition.registerType))
+        entry.bitValue = false;
+    else
+        entry.rawValues = QList<quint16>(entry.definition.registerSpan(), 0);
 
     beginInsertRows(QModelIndex(), m_entries.size(), m_entries.size());
     m_entries.append(entry);
@@ -76,7 +104,10 @@ void FavoritesModel::addAdHoc(int registerType, int address)
     entry.definition.registerType = RegisterType(registerType);
     entry.definition.address = address;
     entry.definition.source = TagSource::AdHoc;
-    entry.rawValues = QList<quint16>(entry.definition.registerSpan(), 0);
+    if (isBitRegisterType(entry.definition.registerType))
+        entry.bitValue = false;
+    else
+        entry.rawValues = QList<quint16>(entry.definition.registerSpan(), 0);
 
     beginInsertRows(QModelIndex(), m_entries.size(), m_entries.size());
     m_entries.append(entry);
@@ -109,6 +140,9 @@ void FavoritesModel::setValueAt(int row, const QString &text)
         return;
 
     const Entry &entry = m_entries.at(row);
+    if (isBitRegisterType(entry.definition.registerType))
+        return; // bit rows go through setBitAt, not text parsing
+
     bool ok = false;
     const QList<quint16> rawValues = Core::parseValue(entry.definition.format, text, &ok);
     if (!ok)
@@ -116,6 +150,18 @@ void FavoritesModel::setValueAt(int row, const QString &text)
 
     for (int k = 0; k < rawValues.size(); ++k)
         emit writeRequested(entry.definition.address + k, int(rawValues.at(k)));
+}
+
+void FavoritesModel::setBitAt(int row, bool value)
+{
+    if (row < 0 || row >= m_entries.size())
+        return;
+
+    const Entry &entry = m_entries.at(row);
+    if (entry.definition.registerType != RegisterType::Coil)
+        return; // DiscreteInput is read-only; word types go through setValueAt
+
+    emit coilWriteRequested(entry.definition.address, value);
 }
 
 QVariantMap FavoritesModel::formatSettingsAt(int row) const
@@ -146,6 +192,8 @@ void FavoritesModel::setFormatAt(int row, int format, int byteOrder, double scal
     entry.definition.format.offset = offset;
     entry.definition.format.unit = unit;
     entry.rawValues = QList<quint16>(entry.definition.registerSpan(), 0);
+    // Old points were computed under the previous format/scale -- meaningless now.
+    entry.history.clear();
 
     emit dataChanged(index(row, 0), index(row, 0));
 }
@@ -186,9 +234,32 @@ void FavoritesModel::applyRegisterUpdate(int targetIndex, int startAddress, cons
     if (targetIndex < 0 || targetIndex >= m_entries.size())
         return;
 
-    m_entries[targetIndex].rawValues = values;
+    Entry &entry = m_entries[targetIndex];
+    entry.rawValues = values;
+    entry.stale = false;
+
+    // Bit-type entries never reach this method in practice (they go through
+    // applyBitUpdate), but guard anyway -- a boolean has no meaningful trend to plot.
+    if (!isBitRegisterType(entry.definition.registerType)) {
+        entry.history.append(Core::numericValue(entry.definition.format, entry.rawValues));
+        if (entry.history.size() > kHistoryCapacity)
+            entry.history.removeFirst();
+    }
+
+    emit dataChanged(index(targetIndex, 0), index(targetIndex, 0), {ValueRole, StaleRole, HistoryRole});
+}
+
+void FavoritesModel::applyBitUpdate(int targetIndex, int startAddress, const QList<bool> &values)
+{
+    Q_UNUSED(startAddress);
+    if (targetIndex < 0 || targetIndex >= m_entries.size() || values.isEmpty())
+        return;
+
+    // A Coil/DiscreteInput entry's PollTarget always has quantity 1 (registerSpan()
+    // is forced to 1 for bit types), so there is exactly one value to take.
+    m_entries[targetIndex].bitValue = values.first();
     m_entries[targetIndex].stale = false;
-    emit dataChanged(index(targetIndex, 0), index(targetIndex, 0), {ValueRole, StaleRole});
+    emit dataChanged(index(targetIndex, 0), index(targetIndex, 0), {ValueRole, BoolValueRole, StaleRole});
 }
 
 void FavoritesModel::markStale(int row)
