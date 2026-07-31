@@ -732,3 +732,156 @@ Coil/DiscreteInput toggle-switch/status-pill controls built in M9d/M9e above
 already deliver that reference image's visual language for the register
 types that needed new UI in this pass; the numeric-value concepts were the
 separate, deferred half of the same ask.
+
+## M10-M10c — Favorites Card View (2026-07-29)
+
+**Done, all layers, user GUI-verified.** Design rationale and milestone
+breakdown lived in the approved plan at
+`C:\Users\projn\.claude\plans\quizzical-cuddling-origami.md` (overwritten in
+place once the prior V1.1 plan shipped). Follows directly from the
+reference-image UI survey at the end of M9e above: the user picked "stat card
++ sparkline" from 3 concept mockups, scoped to Favorites only, confirmed as a
+**toggle** (List stays the default, Cards is opt-in) with **no
+threshold/severity coloring** in this pass (value + sparkline only —
+thresholds are an explicit future follow-up, not built now).
+
+Investigation before planning confirmed: no `QtQuick.Shapes`/`QuickShapes`
+module linked (`Canvas` needs zero CMake changes, bundled in base `QtQuick`);
+`DisplaySettings` (QML_SINGLETON) already holds `addressConvention`/
+`flashOnUpdateEnabled` as the precedent pattern for a third cross-cutting
+toggle; `FavoritesModel::applyRegisterUpdate`/`applyBitUpdate` are the only
+two write-into-`Entry` paths; `RegisterFilterProxyModel` passes through
+arbitrary source-model roles unmodified (plain `QSortFilterProxyModel`, no
+`roleNames()` override), so a new role reaches a card delegate with zero
+proxy-side change.
+
+- **M10** (`core/format/ValueFormatter.h/.cpp`): new `numericValue()` —
+  the scale/offset-applied `double` `formatValue()` was computing internally
+  and immediately stringifying, now exposed as its own function (raw unsigned
+  register value for Hex/Binary, matching `formatValue()`'s existing "no
+  scale/offset there" rule). `formatValue()`'s numeric branches refactored to
+  call it — **zero behavior change**, the full pre-existing
+  `test_value_formatter.cpp` suite passed unmodified after the refactor,
+  confirmed by rerun. 2 new tests.
+- **M10a** (`app-lib/models/FavoritesModel`): `Entry::history` (`QList<double>`,
+  capped at a fixed `kHistoryCapacity = 20` — not poll-interval-adaptive, just
+  a private implementation constant) + new `HistoryRole` exposed as a
+  `QVariantList`. Appended inside `applyRegisterUpdate()` via the new
+  `numericValue()`, guarded by `isBitRegisterType()` (bit entries have no
+  trend to plot — defensive, since `applyBitUpdate` is the real path for
+  those). Cleared in `setFormatAt()` alongside the existing `rawValues`
+  zero-fill (old points are meaningless under a new format/scale). 4 new
+  tests, including the eviction-window boundary at exactly 20 points.
+- **M10b** (`app-lib/DisplaySettings`): `favoritesViewMode` property
+  (`enum class { List, Cards }`), exact shape of the existing
+  `addressConvention` pattern, defaults to `List`. No dedicated test — matches
+  this project's existing precedent for `DisplaySettings`' other thin
+  properties.
+- **M10c** (`app/qml/screens/MainScreen.qml`): new "View:" `ComboBox`
+  (List/Cards) in the Favorites-page toolbar (next to "Add Ad-hoc"/"Add From
+  Tag..." — Favorites-only setting, not the global cross-mode toolbar). The
+  Favorites view area is now a nested `StackLayout` (`currentIndex:
+  DisplaySettings.favoritesViewMode`) with the existing `favoritesListView`
+  unchanged plus a new `GridView` (`cellWidth: 200, cellHeight: 120`) on the
+  same `favoritesFilterProxy` — search filtering keeps working unchanged in
+  both views. Card delegate mirrors the list delegate's Switch/pill/TextField
+  branching (Coil → writable `Switch`, DiscreteInput → read-only ON/OFF pill,
+  word types → big number + sparkline), plus a header row with the existing
+  ⚙/✕ actions. Sparkline is a `Canvas` (chosen over `Shape` specifically to
+  avoid new CMake/module surface), self-relative min/max per card (`||1`
+  guard against divide-by-zero when flat), `pts.length < 2` → blank canvas
+  for fresh entries, repainted via `Connections { onHistoryChanged:
+  sparkline.requestPaint() }` since Canvas doesn't auto-redraw on property
+  changes. Line color is `Theme.accent` — no severity system exists yet, and
+  accent is already this app's "live/changed data" color (the row-update
+  flash). No automated test (QML is GUI-verified by the user, per this
+  project's established convention).
+
+22/22 suites green after every milestone (M10 through M10c), full rebuild +
+`ctest --output-on-failure` each time. Headless launch sanity check after
+M10c (no QML errors printed to the Debug console) — the QML change in M10c
+was large enough (a new nested `StackLayout` + `GridView` + `Canvas`
+delegate, hand-balanced braces) to be worth that extra check beyond the
+usual build-clean signal. **User GUI-verified**: all card-view functionality
+(toggle, sparkline growth, Coil/DiscreteInput cards, ⚙/✕, search filter
+preserved across views) confirmed working.
+
+## Post-M10c investigations: "values not updating" reports and a real polling gap (2026-07-29/30)
+
+**Two reported "values not updating" symptoms — investigated, not code
+bugs.** User reported (1) switching Normal→Favorites while polling appeared
+to stall values, and (2) changing a format from Decimal→Hex appeared to stall
+values. Investigated the same way as the M8 "unit editable" bug: temporary
+`qDebug()`/`console.log()` diagnostics added to `ConnectionController`'s
+poll-relay lambdas, `FavoritesModel::applyRegisterUpdate`/`applyBitUpdate`/
+`setFormatAt`, `RegisterTableModel::setRegisters`/`setFormatAt`, and the QML
+mode-switch/format-picker handlers; user reproduced with a Debug console
+attached. **Root cause for (1)**: the Favorites list was empty
+(`targets.size() == 0` in the diagnostic log) at the moment of switching —
+`PollEngine` correctly polls nothing when there's nothing to poll. The "stop
+→ switch → start" workaround that seemed to fix it actually worked because
+entries had been added to Favorites in between the two attempts, not because
+of the stop/start itself. **Root cause for (2)**: not reproducible — the
+diagnostic log showed `setFormatAt` firing correctly and subsequent poll
+cycles continuing to update via `RegisterTableModel::setRegisters`'s
+`sameRawShape` fast path exactly as designed; user confirmed on retest it no
+longer occurred (or was a one-off). All diagnostic logging reverted
+afterward — confirmed via `grep -rn "DIAG"` returning nothing — no
+production code changes were needed for either symptom.
+
+**Fixed: the empty-Favorites-list finding above surfaced a real, previously
+just-documented gap (M6c's "Known rough edges" item) — fixed now, not just
+flagged.** User pointed out the UX consequence directly: switch to Favorites
+while polling with an empty list (correctly polls nothing), then add an
+entry — the new entry silently never gets polled until the user manually
+stops/restarts, since `FavoritesModel::buildPollTargets()` was only ever
+called at `startPollingFavorites()` time, not on every mutation. Fixed in
+`MainScreen.qml` with a small `root.retargetFavoritesPollingIfActive()`
+helper (re-calls `ConnectionController.startPollingFavorites(favoritesModel)`
+if `ConnectionController.polling && PollModeController.mode === 1`, reusing
+the same live-retarget path already proven safe by the register-type-switch
+and mode-switch handlers) called after all 4 mutation sites: "Add Ad-hoc",
+"Add From Tag...", and both the list-view and card-view "✕" remove buttons.
+New regression test in `test_connection_controller.cpp`,
+`reRequestingFavoritesPollingAfterAddingAnEntryPicksUpTheNewTarget`, proves
+the underlying re-targeting call actually delivers data for a newly-added
+entry rather than being a no-op. 22/22 suites green (14 in
+`test_connection_controller.cpp`, up from 13). Headless launch check clean
+after the QML change.
+
+**Bug fixed: `ConnectionController`'s one-shot requests had no correlation-id
+isolation from `PollEngine`'s traffic, sharing the same
+`ModbusTransactionManager`.** Found from a real user report: toggling a
+Favorites Coil while another Favorites entry was actively polling caused the
+other entry to go stale (orange) and Normal mode to show a spurious "request
+timed out," persisting until the simulator itself was restarted.
+Root cause: `ConnectionController::handleResponseReceived`/
+`handleRequestFailed` are connected to `ModbusTransactionManager::
+responseReceived`/`requestFailed` — signals `PollEngine` *also* connects to
+for its own poll traffic on the same shared transaction manager — but neither
+handler checked the `correlationId` against its own currently-pending
+one-shot request before acting. So an unrelated poll target's own timeout
+(already correctly handled by `PollEngine`'s own, generation-filtered
+handler) would *also* trip `ConnectionController`'s handler, which
+unconditionally reset `m_pendingOperation` to `None` and emitted
+`operationFailed` — misattributing an unrelated poll failure as this
+controller's own one-shot request failing. Worse: if that happened while a
+real one-shot response (e.g. the coil write's own answer) was still in
+flight, it arrived to find `m_pendingOperation` already reset to `None` and
+was silently dropped — no `singleCoilWritten`, no refresh-read, the write
+appearing to just vanish. This predates this session (the same race applied
+to Normal-mode `writeSingleRegister` while polling), but Favorites polling
+with a Coil write made it reliably reproducible. **Fix**: `ConnectionController`
+now assigns each one-shot request its own `m_pendingCorrelationId` (a
+monotonic counter, numerically disjoint from `PollEngine`'s
+generation-based ids), and both handlers now reject any response/failure
+whose `correlationId` doesn't match. New regression test in
+`test_connection_controller.cpp`,
+`unrelatedPollTimeoutDuringAOneShotCoilWriteDoesNotCorruptTheWriteResponse`
+— extends `FakeModbusServer` with a `setBlackholeReadCoils()` toggle so a
+specific poll target can be made to reliably time out on every cycle while a
+one-shot coil write is concurrently outstanding. **Verified TDD-style, not
+just written**: temporarily disabled the two new guard checks, confirmed the
+test actually fails (not just a tautology), then restored the fix and
+confirmed it passes — 22/22 suites green (15 in
+`test_connection_controller.cpp` now). Headless launch check clean.

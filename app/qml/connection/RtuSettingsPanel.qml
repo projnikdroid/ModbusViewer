@@ -18,15 +18,15 @@ ColumnLayout {
 
     RowLayout {
         Layout.fillWidth: true
-        Label { text: "Serial Port"; color: Theme.textSecondary; font.family: Theme.fontFamily }
+        Label { text: "Serial Port"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
         Item { Layout.fillWidth: true }
-        Button {
+        ThemedButton {
             text: "Rescan"
             onClicked: portListModel.rescan()
         }
     }
 
-    ComboBox {
+    ThemedComboBox {
         id: portCombo
         Layout.fillWidth: true
         model: portListModel
@@ -52,8 +52,8 @@ ColumnLayout {
         font.pixelSize: Theme.fontSizeSm
     }
 
-    Label { text: "Baud Rate"; color: Theme.textSecondary; font.family: Theme.fontFamily }
-    ComboBox {
+    Label { text: "Baud Rate"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
+    ThemedComboBox {
         Layout.fillWidth: true
         editable: true
         model: [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
@@ -62,24 +62,24 @@ ColumnLayout {
         onActivated: ConnectionController.baudRate = model[currentIndex]
     }
 
-    Label { text: "Data Bits"; color: Theme.textSecondary; font.family: Theme.fontFamily }
-    ComboBox {
+    Label { text: "Data Bits"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
+    ThemedComboBox {
         Layout.fillWidth: true
         model: [5, 6, 7, 8]
         currentIndex: model.indexOf(ConnectionController.dataBits)
         onActivated: ConnectionController.dataBits = model[currentIndex]
     }
 
-    Label { text: "Parity"; color: Theme.textSecondary; font.family: Theme.fontFamily }
-    ComboBox {
+    Label { text: "Parity"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
+    ThemedComboBox {
         Layout.fillWidth: true
         model: root.parityLabels
         currentIndex: root.parityValues.indexOf(ConnectionController.parity)
         onActivated: ConnectionController.parity = root.parityValues[currentIndex]
     }
 
-    Label { text: "Stop Bits"; color: Theme.textSecondary; font.family: Theme.fontFamily }
-    ComboBox {
+    Label { text: "Stop Bits"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
+    ThemedComboBox {
         Layout.fillWidth: true
         model: [1, 2]
         currentIndex: model.indexOf(ConnectionController.stopBits)

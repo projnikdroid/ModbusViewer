@@ -235,6 +235,18 @@ void FavoritesModel::applyRegisterUpdate(int targetIndex, int startAddress, cons
         return;
 
     Entry &entry = m_entries[targetIndex];
+
+    // A response already in flight when setFormatAt() last changed this
+    // entry's registerSpan() (e.g. Decimal -> Float32) can still arrive sized
+    // for the *old* span. Applying it would desync rawValues.size() from what
+    // Core::formatValue()'s Q_ASSERT requires for the entry's current format,
+    // crashing on the next ValueRole read. The QML side also retargets the
+    // poll on a format change (MainScreen.qml's FormatPicker.onFormatApplied)
+    // so this should be rare in practice, not just papered over here -- but a
+    // response that doesn't match is still stale/wrong to apply regardless.
+    if (values.size() != entry.definition.registerSpan())
+        return;
+
     entry.rawValues = values;
     entry.stale = false;
 

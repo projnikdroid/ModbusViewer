@@ -8,7 +8,7 @@ import ModbusViewer
 // *requested* settings (formatSettingsAt), not the possibly-degraded effective ones
 // actually being rendered, so reopening a temporarily-degraded row doesn't silently
 // discard what the user asked for.
-Popup {
+ThemedPopup {
     id: root
     modal: true
     focus: true
@@ -17,6 +17,13 @@ Popup {
 
     property var registerModel: null
     property int targetRow: -1
+
+    // A format change can change registerSpan() (e.g. Decimal <-> Float32/Int32),
+    // which for Favorites changes how many registers its own PollTarget should
+    // read. MainScreen.qml's Favorites instance listens for this to retarget an
+    // active poll -- Normal mode's instance doesn't need to (its PollTarget is a
+    // fixed address range, not per-row).
+    signal formatApplied()
 
     readonly property var formatOptions: [
         { text: "Signed Decimal", value: 0 },
@@ -53,7 +60,7 @@ Popup {
         spacing: Theme.spacingSm
 
         Label { text: "Display Format"; color: Theme.textSecondary }
-        ComboBox {
+        ThemedComboBox {
             id: formatCombo
             Layout.fillWidth: true
             model: root.formatOptions
@@ -66,7 +73,7 @@ Popup {
             color: Theme.textSecondary
             visible: root.isMultiRegisterFormat
         }
-        ComboBox {
+        ThemedComboBox {
             id: byteOrderCombo
             Layout.fillWidth: true
             visible: root.isMultiRegisterFormat
@@ -80,25 +87,25 @@ Popup {
             enabled: !root.ignoresScaleOffsetUnit
 
             Label { text: "Scale"; color: Theme.textSecondary }
-            TextField { id: scaleField; Layout.preferredWidth: 70 }
+            ThemedTextField { id: scaleField; Layout.preferredWidth: 70 }
 
             Label { text: "Offset"; color: Theme.textSecondary }
-            TextField { id: offsetField; Layout.preferredWidth: 70 }
+            ThemedTextField { id: offsetField; Layout.preferredWidth: 70 }
 
             Label { text: "Unit"; color: Theme.textSecondary }
-            TextField { id: unitField; Layout.preferredWidth: 70 }
+            ThemedTextField { id: unitField; Layout.preferredWidth: 70 }
         }
 
         RowLayout {
             Layout.alignment: Qt.AlignRight
             spacing: Theme.spacingSm
 
-            Button {
+            ThemedButton {
                 text: "Cancel"
                 flat: true
                 onClicked: root.close()
             }
-            Button {
+            ThemedButton {
                 text: "OK"
                 onClicked: {
                     if (root.registerModel && root.targetRow >= 0) {
@@ -111,6 +118,7 @@ Popup {
                             isNaN(parsedScale) ? 1 : parsedScale,
                             isNaN(parsedOffset) ? 0 : parsedOffset,
                             unitField.text)
+                        root.formatApplied()
                     }
                     root.close()
                 }

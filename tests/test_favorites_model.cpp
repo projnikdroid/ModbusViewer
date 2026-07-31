@@ -71,6 +71,8 @@ private slots:
     void applyRegisterUpdateCapsHistoryAtTwentyPoints();
     void applyRegisterUpdateOnBitEntryLeavesHistoryEmpty();
     void setFormatAtClearsHistory();
+
+    void applyRegisterUpdateIgnoresAResponseSizedForTheFormatBeforeALiveFormatChange();
 };
 
 void FavoritesModelTest::addFromTagCopiesFieldsAndZeroFillsSpan()
@@ -339,6 +341,33 @@ void FavoritesModelTest::setFormatAtClearsHistory()
     favorites.setFormatAt(0, int(DisplayFormat::UnsignedDecimal), int(ByteOrder::ABCD), 1.0, 0.0, QString());
 
     QVERIFY(historyAt(favorites, 0).isEmpty());
+}
+
+// Real crash found via GUI testing: switching a Favorites entry's format to a
+// different registerSpan (e.g. Decimal -> Float32) while it's being actively
+// polled resets rawValues to the new span immediately, but a response already
+// in flight under the *old* span can still arrive afterward. Applying it
+// unconditionally desyncs rawValues.size() from what Core::formatValue()'s
+// Q_ASSERT requires for the entry's (now different) format, aborting the
+// process the next time ValueRole is read. The fix: applyRegisterUpdate()
+// discards a response whose size doesn't match the entry's current
+// registerSpan() rather than applying it.
+void FavoritesModelTest::applyRegisterUpdateIgnoresAResponseSizedForTheFormatBeforeALiveFormatChange()
+{
+    FavoritesModel favorites;
+    favorites.addAdHoc(int(RegisterType::HoldingRegister), 10);
+    favorites.applyRegisterUpdate(0, 10, {100});
+
+    // registerSpan 1 -> 2: rawValues resets to two zeros for the new format.
+    favorites.setFormatAt(0, int(DisplayFormat::Float32), int(ByteOrder::ABCD), 1.0, 0.0, QString());
+
+    // A stale response sized for the *old* (span-1) format arrives late.
+    favorites.applyRegisterUpdate(0, 10, {999});
+
+    // Ignored, not applied -- rawValues stayed the format-consistent [0, 0]
+    // (bit_cast<float>(0) == 0), and reading ValueRole doesn't hit the
+    // Q_ASSERT a mismatched size would have triggered.
+    QCOMPARE(valueAt(favorites, 0), QStringLiteral("0"));
 }
 
 QTEST_GUILESS_MAIN(FavoritesModelTest)

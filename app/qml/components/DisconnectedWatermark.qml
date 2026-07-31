@@ -47,13 +47,14 @@ Rectangle {
             font.pixelSize: Theme.fontSizeMd
         }
 
-        Button {
+        ThemedButton {
             anchors.horizontalCenter: parent.horizontalCenter
+            accented: true
             text: "Reconnect Now"
             onClicked: ConnectionController.connectToDevice()
         }
 
-        Button {
+        ThemedButton {
             anchors.horizontalCenter: parent.horizontalCenter
             flat: true
             text: "Give Up"

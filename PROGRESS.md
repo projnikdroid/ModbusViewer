@@ -7,37 +7,14 @@ rationale behind every decision referenced here lives in the approved plan at
 
 ## Current status
 
-**First things next session — do this first, per explicit user request:**
-1. **Plan a full "futuristic" UI redesign — whole app, every screen, not
-   just Favorites.** User's own framing (2026-07-30): every screen should
-   look "like coded in React" — a modern, futuristic aesthetic — explicitly
-   including the **Connection screen** (mode selection, TCP host/port
-   fields, RTU port/baud/data-bits/parity/stop-bits fields), not just the
-   main data screen this project has iterated on so far (M9d/M9e's
-   toggle-switch/pill work, M10's Favorites card view). This is planning
-   only to start — nothing implemented yet. Given the scope (every screen,
-   not one view), treat this like the M10 card-view work did: survey a few
-   concept directions first (as an Artifact, reacting to real content, in
-   this app's actual component structure) before committing to one, then use
-   plan mode once a direction is picked — don't jump straight to
-   implementation. `app/qml/theme/Theme.qml` is the existing single source
-   of palette/spacing/typography tokens; a "coded in React" look most likely
-   means: smoother motion/transitions than this app currently has anywhere,
-   more deliberate spacing/elevation (card-like grouping, shadows/borders),
-   and possibly a fresher palette than `Theme.qml`'s current dark-blue
-   scheme — confirm with the user rather than assuming. Also confirm scope:
-   does "every screen" include `ConnectionScreen.qml`'s TCP/RTU settings
-   panels specifically (`TcpSettingsPanel.qml`/`RtuSettingsPanel.qml`), the
-   main data screen's toolbar/table/Favorites views (already partially
-   modernized), and `DisconnectedWatermark.qml`/dialogs/popups too, or a
-   subset first.
-2. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
+**Carried-over action items — still open, not part of this session's theme work:**
+1. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
    to 1.1.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
    recipe (`packaging/windows/README.md`), verified standalone (launched with
    `PATH` stripped to bare `C:\Windows\System32`, same check as M8), and
    published as a GitHub Release with the zip attached:
    https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.1.0.
-3. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
+2. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
    (private vulnerability reporting also enabled via repo settings),
    `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/`
    (bug report + feature request forms) and `.github/PULL_REQUEST_TEMPLATE.md`
@@ -47,28 +24,21 @@ rationale behind every decision referenced here lives in the approved plan at
    so the user created `Home` manually and the other two pages were pushed
    via `git` to `https://github.com/projnikdroid/ModbusViewer.wiki.git`,
    same repo credential already used for the main repo).
-4. **Check whether the merged CI+CodeQL workflow run actually passed** —
+3. **Check whether the merged CI+CodeQL workflow run actually passed** —
    `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
    entry in `docs/history.md` for the full saga if it needs revisiting.
-   **Note**: item 6 below changed when CI runs going forward, so a fresh
+   **Note**: item 5 below changed when CI runs going forward, so a fresh
    `gh run list` won't show one for ordinary commits anymore — this item is
    about that already-existing historical run, not a new one.
-5. **Bug (reported 2026-07-30, not yet investigated): Normal mode's register
-   table columns don't reflow correctly on window resize.** User's report:
-   the Holding Register value fields are too wide, and shrinking the window
-   causes the value to get hidden/clipped rather than the column resizing
-   down with it. Likely candidate:
-   `registerTableView.columnWidthProvider` in `MainScreen.qml`
-   (`column === 0 ? 90 : width - 90`) not reacting correctly to width
-   changes, or the M9d/M10c delegate's `RowLayout` (Switch/pill/TextField/⚙
-   mix) not shrinking its children properly inside a narrower column.
-   Investigate/reproduce before fixing, per this project's usual convention
-   (see the M8 punch list / the M10 "values not updating" investigation in
-   `docs/history.md` and this file for the pattern) — don't guess at a fix
-   without confirming the actual cause first.
-6. **CI trigger narrowed (2026-07-30), per explicit user request.**
+4. **Fixed (2026-07-30) — was open here as "not yet investigated": Normal
+   mode's register table columns didn't reflow correctly on window resize.**
+   Investigated and fixed as part of this session's M11 GUI-verification pass
+   (real repro, not the original guess) — see the M11 narrative below for the
+   actual root cause and fix (a `TextField` minimum-width floor plus missing
+   `clip: true`, not the originally-suspected `columnWidthProvider`).
+5. **CI trigger narrowed (2026-07-30), per explicit user request.**
    `.github/workflows/ci.yml` no longer runs on every push to `main` or on
    every pull request — it was pure noise for a solo repo. Now runs only on
    a `v*` tag push (i.e. an actual release, same as `v1.1.0`), manually via
@@ -78,160 +48,193 @@ rationale behind every decision referenced here lives in the approved plan at
    (add `pull_request:` back, at least) if this project ever takes outside
    contributions, so contributor PRs get tested automatically again.
 
-**M10-M10c: Favorites Card View — done (2026-07-29), all layers, user
-GUI-verified.** Design rationale and milestone breakdown in the
-approved plan at `C:\Users\projn\.claude\plans\quizzical-cuddling-origami.md`
-(overwritten in place once the prior V1.1 plan shipped — see `docs/history.md`
-for that earlier plan's own narrative). Follows directly from the
-reference-image UI survey at the end of M9e (`docs/history.md`): the user
-picked "stat card + sparkline" from 3 concept mockups, scoped to Favorites
-only, confirmed as a **toggle** (List stays the default, Cards is opt-in) with
-**no threshold/severity coloring** in this pass (value + sparkline only —
-thresholds are an explicit future follow-up, not built now).
+**M11-M11e: Two selectable app themes, "Glass HUD" and "Signal Console" —
+done (2026-07-30), user GUI-verified after a real bug-finding pass.** Full rationale
+and design in the approved plan at
+`C:\Users\projn\.claude\plans\before-moving-ahead-can-clever-acorn.md`.
+Genesis: PROGRESS.md's own "plan a futuristic redesign" flag led to a
+3-concept survey Artifact (Glass HUD / Studio Minimal / Signal Console)
+reacting to the real `ConnectionScreen.qml` fields; user picked Glass HUD +
+Signal Console as **two user-selectable themes** (not one fixed redesign),
+confirmed via clarifying questions: full custom-skinned controls (not just a
+color swap), persisted across restarts via `QSettings`, picker on both
+`ConnectionScreen.qml` and `MainScreen.qml` — plus a fourth constraint added
+mid-plan: the frontend (QML/theme definitions) must stay independent of the
+backend (C++/persistence), so a future theme is a QML-only addition.
 
-Investigation before planning confirmed: no `QtQuick.Shapes`/`QuickShapes`
-module linked (`Canvas` needs zero CMake changes, bundled in base `QtQuick`);
-`DisplaySettings` (QML_SINGLETON) already holds `addressConvention`/
-`flashOnUpdateEnabled` as the precedent pattern for a third cross-cutting
-toggle; `FavoritesModel::applyRegisterUpdate`/`applyBitUpdate` are the only
-two write-into-`Entry` paths; `RegisterFilterProxyModel` passes through
-arbitrary source-model roles unmodified (plain `QSortFilterProxyModel`, no
-`roleNames()` override), so a new role reaches a card delegate with zero
-proxy-side change.
+Exploration before planning confirmed: `Theme.qml` was read via ~180 plain
+`Theme.xxx` bindings across 8 files (all `readonly`, no runtime switching);
+no custom control delegates existed anywhere (`Button`/`ComboBox`/`SpinBox`/
+`TextField`/`TabBar`/`TabButton`/`Switch`/`CheckBox` all rendered via
+QtQuick Controls' default "Basic" style); zero `QSettings` usage anywhere in
+the app (this is the first persisted setting); no `Qt6::QuickEffects`/blur
+module linked.
 
-- **M10** (`core/format/ValueFormatter.h/.cpp`): new `numericValue()` —
-  the scale/offset-applied `double` `formatValue()` was computing internally
-  and immediately stringifying, now exposed as its own function (raw unsigned
-  register value for Hex/Binary, matching `formatValue()`'s existing "no
-  scale/offset there" rule). `formatValue()`'s numeric branches refactored to
-  call it — **zero behavior change**, the full pre-existing
-  `test_value_formatter.cpp` suite passed unmodified after the refactor,
-  confirmed by rerun. 2 new tests.
-- **M10a** (`app-lib/models/FavoritesModel`): `Entry::history` (`QList<double>`,
-  capped at a fixed `kHistoryCapacity = 20` — not poll-interval-adaptive, just
-  a private implementation constant) + new `HistoryRole` exposed as a
-  `QVariantList`. Appended inside `applyRegisterUpdate()` via the new
-  `numericValue()`, guarded by `isBitRegisterType()` (bit entries have no
-  trend to plot — defensive, since `applyBitUpdate` is the real path for
-  those). Cleared in `setFormatAt()` alongside the existing `rawValues`
-  zero-fill (old points are meaningless under a new format/scale). 4 new
-  tests, including the eviction-window boundary at exactly 20 points.
-- **M10b** (`app-lib/DisplaySettings`): `favoritesViewMode` property
-  (`enum class { List, Cards }`), exact shape of the existing
-  `addressConvention` pattern, defaults to `List`. No dedicated test — matches
-  this project's existing precedent for `DisplaySettings`' other thin
-  properties.
-- **M10c** (`app/qml/screens/MainScreen.qml`): new "View:" `ComboBox`
-  (List/Cards) in the Favorites-page toolbar (next to "Add Ad-hoc"/"Add From
-  Tag..." — Favorites-only setting, not the global cross-mode toolbar). The
-  Favorites view area is now a nested `StackLayout` (`currentIndex:
-  DisplaySettings.favoritesViewMode`) with the existing `favoritesListView`
-  unchanged plus a new `GridView` (`cellWidth: 200, cellHeight: 120`) on the
-  same `favoritesFilterProxy` — search filtering keeps working unchanged in
-  both views. Card delegate mirrors the list delegate's Switch/pill/TextField
-  branching (Coil → writable `Switch`, DiscreteInput → read-only ON/OFF pill,
-  word types → big number + sparkline), plus a header row with the existing
-  ⚙/✕ actions. Sparkline is a `Canvas` (chosen over `Shape` specifically to
-  avoid new CMake/module surface), self-relative min/max per card (`||1`
-  guard against divide-by-zero when flat), `pts.length < 2` → blank canvas
-  for fresh entries, repainted via `Connections { onHistoryChanged:
-  sparkline.requestPaint() }` since Canvas doesn't auto-redraw on property
-  changes. Line color is `Theme.accent` — no severity system exists yet, and
-  accent is already this app's "live/changed data" color (the row-update
-  flash). No automated test (QML is GUI-verified by the user, per this
-  project's established convention).
+- **M11** (`app-lib/ThemeSettings.h/.cpp`): new class, `QString themeId`
+  `Q_PROPERTY` — deliberately **no enum, no validation** against known theme
+  names, just an opaque persisted string (the frontend/backend decoupling
+  requirement). `QSettings`, `IniFormat` explicitly, key `"ui/themeId"`,
+  loaded synchronously in the constructor (available before `Theme.qml`'s
+  first read, no flash-of-default-theme). Constructor takes an optional
+  settings-file-path override as the test injection seam (`QTemporaryDir` in
+  `test_theme_settings.cpp`, never touching the real config). `main.cpp`
+  gained `QCoreApplication::setOrganizationName`/`setApplicationName` +
+  `QSettings::setDefaultFormat(IniFormat)` — required for a
+  default-constructed `QSettings()` to resolve anywhere at all; neither name
+  was previously set. 5 new tests (TDD, written first): default-empty,
+  persist-round-trip, empty-string round-trip, arbitrary-unrecognized-id
+  round-trip (proves the backend really doesn't validate), guard-assign-emit
+  signal behavior. 23/23 suites green (up from 22).
+- **M11a** (`app/qml/theme/Theme.qml`): restructured internals, not its
+  external property surface — a `palettes` JS object (`glassHud`,
+  `signalConsole`) plus `active: palettes[ThemeSettings.themeId] ||
+  palettes.glassHud` (a real binding read, not a `Q_INVOKABLE` call, so it
+  re-evaluates automatically) and `availableThemes` (the picker's data
+  source, so adding a theme later never touches the picker or the C++ side).
+  Every existing top-level token becomes `readonly property X: active.X`, so
+  all ~180 pre-existing bindings keep working unchanged. New tokens:
+  `fontFamilyMono`, `accentGradientStops` (2-stop cyan→violet for Glass HUD,
+  empty for Signal Console's flat amber), `blurEnabled`/
+  `gridBackgroundEnabled`.
+- **M11b** (`app/qml/components/ThemeBackdrop.qml`): decorative per-theme
+  background, reusing the exact `Canvas` technique already in this codebase
+  (M10c's sparkline) — Glass HUD's radial wash via Canvas 2D's
+  `createRadialGradient()` (QML's own `Rectangle.gradient` is linear-only),
+  Signal Console's faint amber grid via plain hairline strokes. Painted once
+  per resize/theme-change, not per frame. Placed behind both screens' root
+  `Rectangle`.
+- **M11c** (`app/qml/controls/Themed*.qml`, 9 files): one delegate per
+  control type actually used bare in the app —
+  `Button`/`ComboBox`/`SpinBox`/`TextField`/`TabBar`/`TabButton`/`Switch`/
+  `CheckBox` (confirmed via grep, exactly these 7) plus `Popup` (found during
+  implementation, not the original grep list — `FormatPicker.qml`'s root is
+  a `Popup`, and `MainScreen.qml`'s "Add From Tag..." popup too; leaving
+  either unthemed would put a default-white panel in an otherwise fully
+  skinned screen). Each delegate customizes `background`/`contentItem`/
+  `indicator` against the same reactive `Theme.*` tokens, so **one delegate
+  set serves both themes**. `ThemedComboBox`'s `contentItem` is a `TextField`
+  (not a plain `Text`) specifically so the one editable combo in the app
+  (`RtuSettingsPanel`'s baud-rate picker) keeps working. All bare control
+  instantiations across the 6 consumer files swapped in mechanically
+  (anchored regex substitution on the type name only, verified zero
+  unintended matches before applying).  **Self-review catch**: swapping
+  `TextField`'s themed background from Basic-style's default light panel to
+  `Theme.surface` (dark in both themes) turned a pre-existing `color:
+  registerModel.stale ? Theme.warning : "black"` literal-black hack (in the
+  Normal-mode and Favorites value fields, dating to when the field's own
+  background was light) into invisible black-on-dark text — fixed to
+  `Theme.textPrimary` as part of this milestone, not left for GUI
+  verification to catch.
+- **M11d** (hero-element polish): `ThemedButton` gained an opt-in `accented`
+  property (default `false` — a plain themed button unless explicitly set)
+  driving the gradient-vs-flat accent background from `accentGradientStops`;
+  set `true` only on the Connect button and "Reconnect Now". Connection
+  screen's title got a thin gradient/flat accent rule underneath (QML
+  `Text` can't be gradient-filled without an effects module this project
+  deliberately isn't adding — the gradient lives on a native
+  `Rectangle.gradient` bar instead). `Theme.fontFamilyMono` applied to the
+  Normal/Favorites value fields and the Favorites card's big value text.
+  Connection-screen field labels (`Host`/`Port`/`Baud Rate`/etc., 11 total
+  across `ConnectionScreen.qml`/`TcpSettingsPanel.qml`/`RtuSettingsPanel.qml`
+  — the one screen the approved mockup actually showed this way) gained
+  uppercase + letter-spacing, scoped surgically rather than a blanket
+  relabel of every `Label` in the app.
+- **M11e** (picker UI): a `ThemedComboBox` on both screens, `model:
+  Theme.availableThemes` / `textRole: "label"` / `valueRole: "id"` —
+  the picker itself never hardcodes theme names, so a future third theme
+  needs no picker change either. `MainScreen.qml`: appended to the existing
+  toolbar, after the trailing fill-width spacer. `ConnectionScreen.qml`: new
+  anchored top-right corner control (that screen has no existing toolbar
+  row).
 
-22/22 suites green after every milestone (M10 through M10c), full rebuild +
-`ctest --output-on-failure` each time. Headless launch sanity check after
-M10c (no QML errors printed to the Debug console) — the QML change in M10c
-was large enough (a new nested `StackLayout` + `GridView` + `Canvas`
-delegate, hand-balanced braces) to be worth that extra check beyond the
-usual build-clean signal. **User GUI-verified**: all card-view functionality
-(toggle, sparkline growth, Coil/DiscreteInput cards, ⚙/✕, search filter
-preserved across views) confirmed working.
+23/23 suites green after every milestone. Build clean + headless launch
+check (no QML errors on the Debug console) after M11a/M11b/M11c/M11e — M11c
+in particular given the file count (6 consumer files + 9 new delegates).
 
-**Two reported "values not updating" symptoms — investigated, not code
-bugs.** User reported (1) switching Normal→Favorites while polling appeared
-to stall values, and (2) changing a format from Decimal→Hex appeared to stall
-values. Investigated the same way as the M8 "unit editable" bug (see
-`docs/history.md`): temporary `qDebug()`/`console.log()` diagnostics added to
-`ConnectionController`'s poll-relay lambdas, `FavoritesModel::
-applyRegisterUpdate`/`applyBitUpdate`/`setFormatAt`, `RegisterTableModel::
-setRegisters`/`setFormatAt`, and the QML mode-switch/format-picker handlers;
-user reproduced with a Debug console attached. **Root cause for (1)**: the
-Favorites list was empty (`targets.size() == 0` in the diagnostic log) at the
-moment of switching — `PollEngine` correctly polls nothing when there's
-nothing to poll. The "stop → switch → start" workaround that seemed to fix it
-actually worked because entries had been added to Favorites in between the
-two attempts, not because of the stop/start itself. **Root cause for (2)**:
-not reproducible — the diagnostic log showed `setFormatAt` firing correctly
-and subsequent poll cycles continuing to update via `RegisterTableModel::
-setRegisters`'s `sameRawShape` fast path exactly as designed; user confirmed
-on retest it no longer occurred (or was a one-off). All diagnostic logging
-reverted afterward — confirmed via `grep -rn "DIAG"` returning nothing — no
-production code changes were needed for either symptom.
+**GUI-verification pass (2026-07-30) found and fixed several real bugs the
+headless/automated checks couldn't catch** — exactly the class of problem
+this project's "GUI verification is the user's job" convention exists to
+catch:
 
-**Fixed: the empty-Favorites-list finding above surfaced a real, previously
-just-documented gap (M6c's "Known rough edges" item) — fixed now, not just
-flagged.** User pointed out the UX consequence directly: switch to Favorites
-while polling with an empty list (correctly polls nothing), then add an
-entry — the new entry silently never gets polled until the user manually
-stops/restarts, since `FavoritesModel::buildPollTargets()` was only ever
-called at `startPollingFavorites()` time, not on every mutation. Fixed in
-`MainScreen.qml` with a small `root.retargetFavoritesPollingIfActive()`
-helper (re-calls `ConnectionController.startPollingFavorites(favoritesModel)`
-if `ConnectionController.polling && PollModeController.mode === 1`, reusing
-the same live-retarget path already proven safe by the register-type-switch
-and mode-switch handlers) called after all 4 mutation sites: "Add Ad-hoc",
-"Add From Tag...", and both the list-view and card-view "✕" remove buttons.
-New regression test in `test_connection_controller.cpp`,
-`reRequestingFavoritesPollingAfterAddingAnEntryPicksUpTheNewTarget`, proves
-the underlying re-targeting call actually delivers data for a newly-added
-entry rather than being a no-op. 22/22 suites green (14 in
-`test_connection_controller.cpp`, up from 13). Headless launch check clean
-after the QML change.
+- **Dropdown/popup text invisible** (Theme picker, register-type combo,
+  FormatPicker's Display Format combo): the delegate's hand-rolled
+  `modelData[textRole]` lookup silently evaluated to `undefined` for every
+  row — no QML warning, just blank text. Replaced with `ComboBox.textAt(index)`,
+  the built-in, textRole-aware lookup, via a new shared `ThemedItemDelegate`
+  (also fixes "Add From Tag..."'s search-result list, which had never been
+  swapped off Basic style's default `ItemDelegate` at all).
+- **Glass HUD's popups/dropdowns unreadable**: `Theme.surface`'s intentional
+  translucency (the in-page "glass panel" look) washed out to near-white in
+  a floating `Popup`'s own overlay layer, which has no reliable dark backdrop
+  behind it. New opaque `Theme.surfaceOpaque` token, used only by floating
+  overlays (`ThemedComboBox`'s popup, `ThemedPopup`).
+- **Every SpinBox in the app became read-only**: `ThemedSpinBox`'s
+  `contentItem` gated typing on `control.editable`, which nothing in this
+  app has ever set — removed, since every SpinBox here is meant to be typed
+  into directly.
+- **Popups opened pinned to the window's top-left corner**: `ThemedPopup`
+  never positioned itself. Added `x`/`y` centering *bindings* (not one-time),
+  so it also re-centers if the window is resized/maximized afterward.
+- **ConnectionScreen's theme picker didn't respond to clicks**: the
+  `Flickable` below it in the file was declared after it, so it painted (and
+  captured input) on top, swallowing clicks meant for the picker. Fixed with
+  `z: 1` on the picker.
+- **Real crash**: switching a Favorites entry's display format between
+  register spans of different width (e.g. Decimal → Float32) resets that
+  entry's raw data to the new size immediately, but a poll response already
+  in flight from *before* the change could still arrive sized for the *old*
+  span. Applying it unconditionally desynced the stored data from what the
+  display code's `Q_ASSERT` expects for the new format, aborting the whole
+  process — this is also what the momentary `1.88079e-37`-style garbage
+  value was (a stray register misread as a float, right before the mismatch
+  crashed). Fixed two ways: a format change now retargets the active poll
+  immediately (`FormatPicker.formatApplied` signal, same mechanism already
+  used for add/remove), and `FavoritesModel::applyRegisterUpdate()` now
+  discards any response whose size doesn't match the entry's current
+  `registerSpan()` rather than applying it. **Verified TDD-style**: new test
+  `applyRegisterUpdateIgnoresAResponseSizedForTheFormatBeforeALiveFormatChange`
+  in `test_favorites_model.cpp`, confirmed via `ctest -R test_favorites_model`
+  to genuinely abort the process (`0xc0000602`) with the guard disabled,
+  then confirmed clean with it restored. 23/23 suites green (up from 22).
+- **The originally-flagged "columns don't reflow on resize" bug, actually
+  root-caused this time**: Basic style's default `TextField` implicit width
+  is wider than the row can always afford once its column narrows, and
+  nothing was clipping the overflow — it rendered *past* the cell instead of
+  shrinking or being cut off, invisible until the window was widened enough
+  to reach it. Fixed with an explicit smaller `Layout.minimumWidth` on the
+  value fields plus `clip: true` on both the Normal-mode table row and the
+  Favorites list row.
+- **Toolbar didn't fit narrower windows**: the main toolbar was a single
+  non-wrapping `RowLayout` — anything past the available width (Search,
+  Import Tags, Hide Log, Disconnect) just ran off the edge with no scrollbar
+  and no way back short of widening the window. Switched to a `Flow`, which
+  wraps onto a second line instead.
+- **Value fields now size to their content** (a small min/max-bounded
+  `Layout.preferredWidth` from `contentWidth`) instead of stretching to fill
+  the whole row, per direct user feedback once resizing was fixed and the
+  full-width stretch became obviously excessive. The ⚙/✕ action buttons
+  stay clustered next to the value at the row's right edge via an
+  unconditional filler `Item`, matching the layout Favorites already used
+  for its bit-type rows.
 
-**Bug fixed: `ConnectionController`'s one-shot requests had no correlation-id
-isolation from `PollEngine`'s traffic, sharing the same
-`ModbusTransactionManager`.** Found from a real user report: toggling a
-Favorites Coil while another Favorites entry was actively polling caused the
-other entry to go stale (orange) and Normal mode to show a spurious "request
-timed out," persisting until the simulator itself was restarted.
-Root cause: `ConnectionController::handleResponseReceived`/
-`handleRequestFailed` are connected to `ModbusTransactionManager::
-responseReceived`/`requestFailed` — signals `PollEngine` *also* connects to
-for its own poll traffic on the same shared transaction manager — but neither
-handler checked the `correlationId` against its own currently-pending
-one-shot request before acting. So an unrelated poll target's own timeout
-(already correctly handled by `PollEngine`'s own, generation-filtered
-handler) would *also* trip `ConnectionController`'s handler, which
-unconditionally reset `m_pendingOperation` to `None` and emitted
-`operationFailed` — misattributing an unrelated poll failure as this
-controller's own one-shot request failing. Worse: if that happened while a
-real one-shot response (e.g. the coil write's own answer) was still in
-flight, it arrived to find `m_pendingOperation` already reset to `None` and
-was silently dropped — no `singleCoilWritten`, no refresh-read, the write
-appearing to just vanish. This predates this session (the same race applied
-to Normal-mode `writeSingleRegister` while polling), but Favorites polling
-with a Coil write made it reliably reproducible. **Fix**: `ConnectionController`
-now assigns each one-shot request its own `m_pendingCorrelationId` (a
-monotonic counter, numerically disjoint from `PollEngine`'s
-generation-based ids), and both handlers now reject any response/failure
-whose `correlationId` doesn't match. New regression test in
-`test_connection_controller.cpp`,
-`unrelatedPollTimeoutDuringAOneShotCoilWriteDoesNotCorruptTheWriteResponse`
-— extends `FakeModbusServer` with a `setBlackholeReadCoils()` toggle so a
-specific poll target can be made to reliably time out on every cycle while a
-one-shot coil write is concurrently outstanding. **Verified TDD-style, not
-just written**: temporarily disabled the two new guard checks, confirmed the
-test actually fails (not just a tautology), then restored the fix and
-confirmed it passes — 22/22 suites green (15 in
-`test_connection_controller.cpp` now). Headless launch check clean.
+**Known, explicitly deferred (not a blocker)**: the "Flash on update"
+`ThemedCheckBox` shows what the user describes as two overlapping
+check-mark-shaped visuals when checked/hovered. Investigated two rounds
+(suspected Basic-style default background chrome, then suspected `"✓"`
+glyph/emoji-presentation font fallback — replaced with a hand-drawn `Canvas`
+stroke) without resolving it; still visible with the drawn version too, at
+different apparent sizes/colors, which rules out both font-fallback theories.
+Most likely explanation left: the indicator's own two-part composition (a
+filled box *containing* a separate check mark) reading as "two shapes" at
+18px, not an actual duplicate element — grepping confirms only one
+`ThemedCheckBox` instance and one checkmark in its code. **User decided this
+isn't worth pursuing further** — left as-is, flagged in "Known rough edges"
+below if revisited later.
 
-**Older milestones (M1–M9e, plus the post-M8 punch list, OSS-readiness pass,
-and the reference-image UI survey that led into M10):** moved to
-`docs/history.md` to keep this section lean — see that file for the full
-narrative and design decisions behind each.
+**Older milestones (M1–M10c, the post-M10c "values not updating"
+investigations and correlation-id bugfix, the post-M8 punch list, and the
+OSS-readiness pass):** moved to `docs/history.md` to keep this section lean —
+see that file for the full narrative and design decisions behind each.
 
 ## Milestones
 
@@ -263,6 +266,12 @@ narrative and design decisions behind each.
 | M10a | FavoritesModel sparkline history buffer + HistoryRole | **Done** |
 | M10b | DisplaySettings.favoritesViewMode | **Done** |
 | M10c | Favorites Card View QML (GridView + Canvas sparkline) | **Done**, user GUI-verified |
+| M11 | ThemeSettings persistence backend + tests | **Done** |
+| M11a | Theme.qml palette-map restructure (Glass HUD / Signal Console) | **Done**, user GUI-verified |
+| M11b | Decorative background Canvases | **Done**, user GUI-verified |
+| M11c | Themed control delegates (10 files) + swap-in | **Done**, user GUI-verified |
+| M11d | Hero-element polish (gradient accents, mono data fields, tracked labels) | **Done**, user GUI-verified |
+| M11e | Theme picker UI on both screens | **Done**, user GUI-verified |
 
 ## Environment
 
@@ -305,6 +314,16 @@ narrative and design decisions behind each.
   if/when that matters (flagged during M6, out of scope for its verify step).
 - RTU is implemented and unit-tested but has never run over a real serial link —
   this machine has no serial ports at all. Needs a device or a com0com virtual pair.
+- **`ThemedCheckBox` ("Flash on update") shows what looks like two
+  overlapping check-mark visuals when checked/hovered**, per direct user
+  report (2026-07-30). Two rounds of investigation (Basic-style default
+  background chrome, then `"✓"` glyph/emoji font-fallback rendering — both
+  ruled out, including after replacing the glyph with a hand-drawn `Canvas`
+  stroke) didn't resolve it. Only one `ThemedCheckBox` instance and one
+  checkmark element exist in the code (confirmed via grep) — likely the
+  indicator's own box+mark composition reading as "two shapes" at 18px
+  rather than an actual duplicate. **User explicitly decided not to pursue
+  this further** — cosmetic only, revisit only if it bothers someone later.
 
 ## Notes from implementation (deviations from the plan, decisions made along the way)
 

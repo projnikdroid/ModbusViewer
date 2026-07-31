@@ -29,6 +29,8 @@ set(MODBUSVIEWER_APPLIB_SOURCES
     ${CMAKE_SOURCE_DIR}/app-lib/PollModeController.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/TagDatabaseController.h
     ${CMAKE_SOURCE_DIR}/app-lib/TagDatabaseController.cpp
+    ${CMAKE_SOURCE_DIR}/app-lib/ThemeSettings.h
+    ${CMAKE_SOURCE_DIR}/app-lib/ThemeSettings.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/models/RegisterTableModel.h
     ${CMAKE_SOURCE_DIR}/app-lib/models/RegisterTableModel.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/models/TagDatabaseModel.h

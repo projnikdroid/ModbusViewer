@@ -21,6 +21,17 @@ qt_add_qml_module(ModbusViewer
         qml/components/DisconnectedWatermark.qml
         qml/components/HandshakeAnimation.qml
         qml/components/FormatPicker.qml
+        qml/components/ThemeBackdrop.qml
+        qml/controls/ThemedButton.qml
+        qml/controls/ThemedComboBox.qml
+        qml/controls/ThemedSpinBox.qml
+        qml/controls/ThemedTextField.qml
+        qml/controls/ThemedSwitch.qml
+        qml/controls/ThemedCheckBox.qml
+        qml/controls/ThemedTabBar.qml
+        qml/controls/ThemedTabButton.qml
+        qml/controls/ThemedPopup.qml
+        qml/controls/ThemedItemDelegate.qml
         qml/dialogs/ImportTagFileDialog.qml
     SOURCES
         ${MODBUSVIEWER_APPLIB_SOURCES}

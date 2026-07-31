@@ -8,6 +8,10 @@ Rectangle {
     id: root
     color: Theme.background
 
+    ThemeBackdrop {
+        anchors.fill: parent
+    }
+
     // The PDU (wire) address is the source of truth; startAddressField only ever
     // shows/accepts it transformed through the active DisplaySettings convention.
     property int startAddressPdu: 0
@@ -45,6 +49,14 @@ Rectangle {
     FormatPicker {
         id: favoritesFormatPicker
         registerModel: favoritesModel
+        // A format change can change this entry's registerSpan() (e.g.
+        // Decimal <-> Float32/Int32) -- without retargeting, an in-flight or
+        // next-cycle poll response sized for the *old* span reaches
+        // FavoritesModel::applyRegisterUpdate() with a mismatched register
+        // count, which used to crash on the next repaint (see
+        // FavoritesModel's own defensive size-mismatch guard for the other
+        // half of this fix).
+        onFormatApplied: root.retargetFavoritesPollingIfActive()
     }
 
     FavoritesModel {
@@ -138,7 +150,7 @@ Rectangle {
         }
     }
 
-    Popup {
+    ThemedPopup {
         id: addFromTagPopup
         modal: true
         focus: true
@@ -151,7 +163,7 @@ Rectangle {
             anchors.fill: parent
             spacing: Theme.spacingSm
 
-            TextField {
+            ThemedTextField {
                 Layout.fillWidth: true
                 placeholderText: "Search tags..."
                 onTextChanged: tagFilterProxy.filterText = text
@@ -163,7 +175,7 @@ Rectangle {
                 clip: true
                 model: tagFilterProxy
 
-                delegate: ItemDelegate {
+                delegate: ThemedItemDelegate {
                     id: tagDelegateRoot
                     required property int index
                     required property string label
@@ -189,35 +201,52 @@ Rectangle {
         anchors.margins: Theme.spacingLg
         spacing: Theme.spacingMd
 
-        RowLayout {
+        Flow {
+            // A RowLayout doesn't wrap -- with this many controls, a narrower
+            // window just ran them off the right edge with no way to reach
+            // them (no scrollbar, nothing clipped them either). Flow wraps
+            // onto a second line instead, so the toolbar always fits within
+            // whatever width is available. Flow positions children directly
+            // (not via Layout attached properties), so the RowLayout-only
+            // fill-width spacer that used to push the rest of the toolbar
+            // right is gone -- with wrapping, there's no fixed "right side"
+            // to push things toward.
+            Layout.fillWidth: true
             spacing: Theme.spacingMd
 
             Text {
                 text: "ModbusViewer"
-                color: Theme.textPrimary
+                color: Theme.accent
                 font.family: Theme.fontFamily
                 font.pixelSize: Theme.fontSizeLg
                 font.bold: true
             }
 
-            Item { Layout.fillWidth: true }
+            Label { text: "Theme:"; color: Theme.textSecondary }
+            ThemedComboBox {
+                model: Theme.availableThemes
+                textRole: "label"
+                valueRole: "id"
+                currentIndex: Math.max(0, indexOfValue(ThemeSettings.themeId))
+                onActivated: ThemeSettings.themeId = currentValue
+            }
 
             Label { text: "Address:"; color: Theme.textSecondary }
-            ComboBox {
+            ThemedComboBox {
                 model: ["0-based (PDU)", "Modicon (4xxxx)"]
                 currentIndex: DisplaySettings.addressConvention
                 onActivated: (index) => DisplaySettings.addressConvention = index
             }
 
             Label { text: "Mode:"; color: Theme.textSecondary }
-            ComboBox {
+            ThemedComboBox {
                 model: ["Normal", "Favorites"]
                 currentIndex: PollModeController.mode
                 onActivated: (index) => PollModeController.mode = index
             }
 
             Label { text: "Type:"; color: Theme.textSecondary }
-            ComboBox {
+            ThemedComboBox {
                 // Values match Core::RegisterType's/RegisterTableModel::RegisterType's
                 // shared ordinal ordering, so currentIndex tracks registerType directly.
                 model: ["Coil (0x)", "Discrete Input (1x)", "Holding Register (4x)", "Input Register (3x)"]
@@ -232,33 +261,33 @@ Rectangle {
                 }
             }
 
-            CheckBox {
+            ThemedCheckBox {
                 text: "Flash on update"
                 checked: DisplaySettings.flashOnUpdateEnabled
                 onToggled: DisplaySettings.flashOnUpdateEnabled = checked
             }
 
             Label { text: "Search:"; color: Theme.textSecondary }
-            TextField {
+            ThemedTextField {
                 placeholderText: "label, description, address, unit"
-                Layout.preferredWidth: 220
+                width: 220
                 onTextChanged: {
                     normalFilterProxy.filterText = text
                     favoritesFilterProxy.filterText = text
                 }
             }
 
-            Button {
+            ThemedButton {
                 text: "Import Tags..."
                 onClicked: importTagDialog.open()
             }
 
-            Button {
+            ThemedButton {
                 text: root.logPanelVisible ? "Hide Log" : "Show Log"
                 onClicked: root.logPanelVisible = !root.logPanelVisible
             }
 
-            Button {
+            ThemedButton {
                 text: "Disconnect"
                 onClicked: ConnectionController.disconnectFromDevice()
             }
@@ -268,7 +297,7 @@ Rectangle {
             spacing: Theme.spacingSm
 
             Label { text: "Start Address"; color: Theme.textSecondary }
-            SpinBox {
+            ThemedSpinBox {
                 id: startAddressField
                 // Q_INVOKABLE calls aren't tracked as binding dependencies by QML, so
                 // each expression reads addressConvention/registerType first (comma
@@ -284,14 +313,14 @@ Rectangle {
             }
 
             Label { text: "Quantity"; color: Theme.textSecondary }
-            SpinBox {
+            ThemedSpinBox {
                 id: quantityField
                 from: 1
                 to: (registerModel.registerType, registerModel.maxReadCountFor())
                 value: 10
             }
 
-            Button {
+            ThemedButton {
                 text: "Read"
                 enabled: !ConnectionController.polling
                 onClicked: ConnectionController.readRegisters(registerModel.registerType, root.startAddressPdu, quantityField.value)
@@ -300,7 +329,7 @@ Rectangle {
             ToolSeparator {}
 
             Label { text: "Interval (ms)"; color: Theme.textSecondary }
-            SpinBox {
+            ThemedSpinBox {
                 id: intervalField
                 from: 10
                 to: 60000
@@ -309,7 +338,7 @@ Rectangle {
                 onValueModified: ConnectionController.pollIntervalMs = value
             }
 
-            Button {
+            ThemedButton {
                 text: ConnectionController.polling ? "Stop Polling" : "Start Polling"
                 onClicked: {
                     if (ConnectionController.polling) {
@@ -366,6 +395,12 @@ Rectangle {
 
                         implicitWidth: registerTableView.columnWidthProvider(column)
                         implicitHeight: 40
+                        // Basic-style TextField's own default implicitWidth is wider than
+                        // this row's RowLayout can always afford once the column shrinks;
+                        // without clipping here, an unshrunk child renders past this cell's
+                        // right edge instead of inside it -- invisible until the window is
+                        // widened enough to reach it, rather than just fitting or clipping.
+                        clip: true
                         color: row % 2 === 0 ? Theme.surface : Theme.surfaceRaised
                         // Triggered off the model role, not the TextField's own text
                         // (which also changes on every keystroke while editing) -- this
@@ -407,7 +442,7 @@ Rectangle {
                             // (matches the numeric TextField's write-on-editingFinished
                             // behavior -- a toggle click is the coil equivalent of
                             // tabbing away from a text field).
-                            Switch {
+                            ThemedSwitch {
                                 visible: delegateRoot.isBit && delegateRoot.writable
                                 checked: delegateRoot.boolValue
                                 onToggled: registerModel.setBitAt(normalFilterProxy.mapRowToSource(delegateRoot.row), checked)
@@ -422,21 +457,28 @@ Rectangle {
                                 font.bold: true
                             }
 
-                            TextField {
+                            // Pushes the value field (and ⚙ beside it) to the cell's
+                            // right edge now that the field itself sizes to its
+                            // content rather than stretching to fill the row.
+                            Item { Layout.fillWidth: true }
+
+                            ThemedTextField {
                                 id: valueField
                                 visible: !delegateRoot.isBit
-                                Layout.fillWidth: true
+                                // Sized to the value's own text rather than stretched
+                                // full-width -- a value like "82.4" doesn't need a
+                                // field wide enough for the whole cell. Bounded so a
+                                // very long formatted value (e.g. a signed Int32 with
+                                // a unit suffix) still has room, and a very short one
+                                // doesn't shrink to nothing.
+                                Layout.preferredWidth: Math.max(60, Math.min(contentWidth + leftPadding + rightPadding + 12, 260))
                                 readOnly: !delegateRoot.writable
                                 // registerModel.stale is whole-range: Normal mode is
                                 // always one PollTarget covering the entire visible
                                 // range, so a poll failure flags every value cell
                                 // (contrast Favorites' per-row staleness below).
-                                // Plain black, not Theme.textPrimary -- TextField's own
-                                // control background is light (Qt Quick Controls' default
-                                // style), unlike the dark custom Rectangles Theme.textPrimary
-                                // is designed to sit on, so the light theme text color was
-                                // nearly invisible here.
-                                color: registerModel.stale ? Theme.warning : "black"
+                                color: registerModel.stale ? Theme.warning : Theme.textPrimary
+                                font.family: Theme.fontFamilyMono
                                 font.bold: registerModel.stale
                                 horizontalAlignment: Text.AlignRight
                                 // delegateRoot.row is the proxy's row; RegisterTableModel
@@ -457,7 +499,7 @@ Rectangle {
                             // Scale/offset/unit/byteOrder/format have no meaning for a
                             // 1-bit value, so the format picker is hidden entirely (not
                             // shown-disabled) for Coil/DiscreteInput rows.
-                            Button {
+                            ThemedButton {
                                 text: "⚙"
                                 visible: !delegateRoot.isBit
                                 flat: true
@@ -475,7 +517,7 @@ Rectangle {
                         Layout.margins: Theme.spacingSm
                         spacing: Theme.spacingSm
 
-                        ComboBox {
+                        ThemedComboBox {
                             id: adhocRegisterTypeCombo
                             // Values match Core::RegisterType's ordering.
                             model: [
@@ -488,13 +530,13 @@ Rectangle {
                             valueRole: "value"
                         }
 
-                        SpinBox {
+                        ThemedSpinBox {
                             id: adhocAddressField
                             from: 0
                             to: 65535
                         }
 
-                        Button {
+                        ThemedButton {
                             text: "Add Ad-hoc"
                             onClicked: {
                                 favoritesModel.addAdHoc(adhocRegisterTypeCombo.currentValue, adhocAddressField.value)
@@ -502,7 +544,7 @@ Rectangle {
                             }
                         }
 
-                        Button {
+                        ThemedButton {
                             text: "Add From Tag..."
                             onClicked: addFromTagPopup.open()
                         }
@@ -510,7 +552,7 @@ Rectangle {
                         Item { Layout.fillWidth: true }
 
                         Label { text: "View:"; color: Theme.textSecondary }
-                        ComboBox {
+                        ThemedComboBox {
                             model: ["List", "Cards"]
                             currentIndex: DisplaySettings.favoritesViewMode
                             onActivated: (index) => DisplaySettings.favoritesViewMode = index
@@ -542,6 +584,7 @@ Rectangle {
 
                             width: favoritesListView.width
                             height: 40
+                            clip: true
                             color: index % 2 === 0 ? Theme.surface : Theme.surfaceRaised
                             onValueChanged: if (DisplaySettings.flashOnUpdateEnabled) favFlashAnimation.restart()
 
@@ -576,7 +619,7 @@ Rectangle {
                                 // Coil: writable, so a toggle switch that writes
                                 // immediately (matches the numeric TextField's
                                 // write-on-editingFinished behavior).
-                                Switch {
+                                ThemedSwitch {
                                     visible: favDelegateRoot.isBit && favDelegateRoot.writable
                                     checked: favDelegateRoot.boolValue
                                     onToggled: favoritesModel.setBitAt(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index), checked)
@@ -591,20 +634,21 @@ Rectangle {
                                     font.bold: true
                                 }
 
-                                // Keeps the "remove" button right-aligned regardless of
-                                // whether the value column is a Switch/pill or a TextField.
-                                Item { Layout.fillWidth: true; visible: favDelegateRoot.isBit }
+                                // Keeps the value field/switch/pill and the ⚙/✕
+                                // buttons clustered at the row's right edge, now that
+                                // the value field itself sizes to its content instead
+                                // of stretching to fill the row.
+                                Item { Layout.fillWidth: true }
 
-                                TextField {
+                                ThemedTextField {
                                     id: favValueField
                                     visible: !favDelegateRoot.isBit
-                                    Layout.fillWidth: true
+                                    Layout.preferredWidth: Math.max(60, Math.min(contentWidth + leftPadding + rightPadding + 12, 260))
                                     readOnly: !favDelegateRoot.writable
                                     // Per-row, unlike Normal's whole-range staleness: each
                                     // Favorites entry is its own independent PollTarget.
-                                    // Plain black, not Theme.textPrimary -- see the same
-                                    // note on the Normal-view value field above.
-                                    color: favDelegateRoot.stale ? Theme.warning : "black"
+                                    color: favDelegateRoot.stale ? Theme.warning : Theme.textPrimary
+                                    font.family: Theme.fontFamilyMono
                                     font.bold: favDelegateRoot.stale
                                     horizontalAlignment: Text.AlignRight
                                     // favDelegateRoot.index is the proxy's row; FavoritesModel
@@ -622,7 +666,7 @@ Rectangle {
                                 // Scale/offset/unit/byteOrder/format have no meaning for a
                                 // 1-bit value, so the format picker is hidden entirely for
                                 // Coil/DiscreteInput rows.
-                                Button {
+                                ThemedButton {
                                     text: "⚙"
                                     visible: !favDelegateRoot.isBit
                                     flat: true
@@ -630,7 +674,7 @@ Rectangle {
                                     onClicked: favoritesFormatPicker.openFor(favoritesFilterProxy.mapRowToSource(favDelegateRoot.index))
                                 }
 
-                                Button {
+                                ThemedButton {
                                     text: "✕"
                                     flat: true
                                     Layout.preferredWidth: 32
@@ -706,7 +750,7 @@ Rectangle {
 
                                     // Scale/offset/unit/byteOrder/format have no meaning
                                     // for a 1-bit value, so hidden entirely for bit rows.
-                                    Button {
+                                    ThemedButton {
                                         text: "⚙"
                                         visible: !cardDelegateRoot.isBit
                                         flat: true
@@ -714,7 +758,7 @@ Rectangle {
                                         onClicked: favoritesFormatPicker.openFor(favoritesFilterProxy.mapRowToSource(cardDelegateRoot.index))
                                     }
 
-                                    Button {
+                                    ThemedButton {
                                         text: "✕"
                                         flat: true
                                         Layout.preferredWidth: 24
@@ -726,7 +770,7 @@ Rectangle {
                                 }
 
                                 // Coil: writable toggle, matches the list view's behavior.
-                                Switch {
+                                ThemedSwitch {
                                     visible: cardDelegateRoot.isBit && cardDelegateRoot.writable
                                     checked: cardDelegateRoot.boolValue
                                     onToggled: favoritesModel.setBitAt(favoritesFilterProxy.mapRowToSource(cardDelegateRoot.index), checked)
@@ -751,6 +795,7 @@ Rectangle {
                                     Text {
                                         text: cardDelegateRoot.value
                                         color: cardDelegateRoot.stale ? Theme.warning : Theme.textPrimary
+                                        font.family: Theme.fontFamilyMono
                                         font.bold: true
                                         font.pixelSize: Theme.fontSizeLg
                                         elide: Text.ElideRight
@@ -835,7 +880,7 @@ Rectangle {
 
                     Item { Layout.fillWidth: true }
 
-                    Button {
+                    ThemedButton {
                         text: "Clear"
                         flat: true
                         onClicked: communicationLogModel.clear()
