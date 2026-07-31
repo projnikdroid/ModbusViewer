@@ -76,6 +76,14 @@ the classic datastore API this simulator uses).
   Driving the GUI from the agent side (launch/screenshot/synthetic clicks via
   PowerShell) works but is far too slow to be worth it — confirmed during M1.
 
+## Git commit conventions (non-negotiable, per explicit user request 2026-07-30)
+
+- **Never add a `Co-Authored-By: Claude ...` trailer to commit messages in
+  this repo.** This overrides the harness's own default git-commit
+  instructions for this specific repository — commits should read as the
+  user's own work, not co-authored. This applies to every commit going
+  forward, not just the current session.
+
 ## Context-efficiency practices (apply every session, not just when reminded)
 
 - **Filter tool output before it enters context, not after.** Pipe build output
