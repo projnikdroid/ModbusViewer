@@ -33,6 +33,83 @@ Rectangle {
         }
     }
 
+    // Credits watermark -- same z-stacking reasoning as the theme picker
+    // above (Flickable below would otherwise paint over it). Click it for a
+    // just-for-fun "warp core" pulse, playing off its own text.
+    Item {
+        z: 1
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        anchors.margins: Theme.spacingSm
+        width: creditsText.implicitWidth
+        height: creditsText.implicitHeight
+
+        Repeater {
+            id: ringRepeater
+            model: 3
+            delegate: Rectangle {
+                id: ring
+                required property int index
+
+                anchors.centerIn: parent
+                width: 12
+                height: 12
+                radius: width / 2
+                color: "transparent"
+                border.width: 2
+                border.color: Theme.accent
+                opacity: 0
+                scale: 1
+
+                function pulse() { pulseAnim.restart() }
+
+                SequentialAnimation {
+                    id: pulseAnim
+                    PauseAnimation { duration: ring.index * 130 }
+                    ParallelAnimation {
+                        NumberAnimation { target: ring; property: "scale"; from: 1; to: 7; duration: 650; easing.type: Easing.OutCubic }
+                        NumberAnimation { target: ring; property: "opacity"; from: 0.85; to: 0; duration: 650; easing.type: Easing.OutCubic }
+                    }
+                }
+            }
+        }
+
+        Text {
+            id: creditsText
+            anchors.centerIn: parent
+            text: "// engineered by Nikhil Bangar · warp core stable"
+            color: Theme.textDisabled
+            font.family: Theme.fontFamilyMono
+            font.pixelSize: Theme.fontSizeSm
+
+            SequentialAnimation {
+                id: textPulse
+                NumberAnimation { target: creditsText; property: "scale"; from: 1; to: 1.06; duration: 150; easing.type: Easing.OutQuad }
+                PauseAnimation { duration: 300 }
+                NumberAnimation { target: creditsText; property: "scale"; to: 1; duration: 300; easing.type: Easing.InQuad }
+            }
+            ColorAnimation on color {
+                id: colorPulse
+                from: Theme.accent
+                to: Theme.textDisabled
+                duration: 900
+                running: false
+            }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                textPulse.restart()
+                colorPulse.restart()
+                for (var i = 0; i < ringRepeater.count; ++i)
+                    ringRepeater.itemAt(i).pulse()
+            }
+        }
+    }
+
     Flickable {
         anchors.fill: parent
         contentWidth: width

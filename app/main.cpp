@@ -1,4 +1,5 @@
 #include <QGuiApplication>
+#include <QIcon>
 #include <QQmlApplicationEngine>
 #include <QSettings>
 
@@ -12,6 +13,11 @@ int main(int argc, char *argv[])
     QSettings::setDefaultFormat(QSettings::IniFormat);
 
     QGuiApplication app(argc, argv);
+    // The .exe's own embedded resource icon (app.rc) covers Explorer/the
+    // taskbar's default icon before the window paints, but Qt doesn't pick
+    // that up automatically as the *runtime* window/taskbar icon -- this is
+    // the same app.ico, embedded separately as a Qt resource (app/CMakeLists.txt).
+    app.setWindowIcon(QIcon(QStringLiteral(":/icons/app.ico")));
 
     QQmlApplicationEngine engine;
     QObject::connect(

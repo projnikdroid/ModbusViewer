@@ -2,6 +2,17 @@ qt_policy(SET QTP0004 NEW)
 
 qt_add_executable(ModbusViewer
     main.cpp
+    $<$<PLATFORM_ID:Windows>:app.rc>
+)
+
+# app.rc embeds icons/app.ico as the .exe's own resource icon (Explorer,
+# taskbar default, Alt-Tab before the window paints). The same file is also
+# embedded as a Qt resource below so main.cpp can set it as the *runtime*
+# window/taskbar icon via QGuiApplication::setWindowIcon() -- Qt doesn't pick
+# the .exe's resource icon up automatically for that.
+qt_add_resources(ModbusViewer "appicon"
+    PREFIX "/"
+    FILES icons/app.ico
 )
 
 set_source_files_properties(qml/theme/Theme.qml PROPERTIES

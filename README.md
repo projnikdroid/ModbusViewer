@@ -3,7 +3,52 @@
 A cross-platform (Windows + macOS) Modbus TCP/RTU master tool — a Qt6/QML clone of
 Modbus Poll, built with C++20 and CMake.
 
-> Screenshots coming soon.
+## Screenshots
+
+Two full visual themes ship with the app — Glass HUD and Signal Console — switchable
+live from a picker on every screen, no restart required.
+
+### Normal mode — live register polling
+
+![Normal mode: continuous polling of a Holding Register block](docs/screenshots/Normal-View.png)
+
+Point it at a contiguous block of registers and watch them update in place as they
+poll — no manual re-reads, no guessing whether a value is current. Every field shows
+exactly what it needs to and nothing more: address, live value, a one-click format
+editor. Switch addressing convention (0-based PDU or Modicon 4xxxx) or register type
+mid-session without losing your place.
+
+### Favorites — List view
+
+![Favorites list view: a curated register with a live write confirmation](docs/screenshots/Favorites-View.png)
+
+Most sessions don't need every register in a device — they need the five that
+actually matter. Favorites lets you hand-pick registers (ad hoc by address, or
+straight from an imported tag database) into one focused, always-current list,
+independent of whatever range Normal mode happens to be reading. Writes confirm
+immediately — the status line above shows exactly what was written and where.
+
+### Favorites — Cards view
+
+![Favorites card view: a labeled register with a live sparkline](docs/screenshots/Favorites-Card-View.png)
+
+The same curated list, laid out as stat cards with a rolling sparkline per value —
+built for watching a handful of registers trend over time at a glance, not just
+reading a single instantaneous number. One toggle switches between List and Cards;
+nothing about your Favorites selection changes underneath it.
+
+### Tag-driven workflows
+
+"Import Tags..." loads a CSV or JSON register map — real labels and descriptions
+("Ambient Temp," not "register 40021") instead of bare addresses, ready to drop into
+Favorites via "Add From Tag..." Combined with live search/filter across label,
+description, address, and unit, a large register map stays navigable instead of
+turning into a wall of numbers.
+
+That combination — one tool for a full contiguous sweep *and* a focused live watch
+list, both addressable by name instead of memorized offsets, in a theme you'd
+actually want to stare at during a long debugging session — is the whole premise:
+industrial-tool capability without the industrial-tool interface.
 
 ## Features
 
