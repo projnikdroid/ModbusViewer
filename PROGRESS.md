@@ -60,6 +60,15 @@ rationale behind every decision referenced here lives in the approved plan at
    longer get automatic CI validation. Fine for a solo maintainer; revisit
    (add `pull_request:` back, at least) if this project ever takes outside
    contributions, so contributor PRs get tested automatically again.
+7. **GitHub sidebar "Contributors" count is stale (2026-08-13) — not a repo
+   problem.** The actual git history and the GitHub REST API
+   (`repos/.../contributors`) both show only `projnikdroid`, 17 commits.
+   The repo sidebar widget still lists two extra stale entries left over
+   from before commit `7f8f1e0` ("Stop adding Claude co-author trailer to
+   commits in this repo"), because that graph is computed asynchronously
+   and can lag a real history change. Nothing to fix in the repo; this
+   commit is a push nudge to encourage GitHub to recompute it. Re-check the
+   repo page if it's still wrong in a few days.
 
 **M11-M11e: Two selectable app themes, "Glass HUD" and "Signal Console" —
 done (2026-07-30), user GUI-verified after a real bug-finding pass.** Full rationale
