@@ -148,6 +148,9 @@ private slots:
     void userInitiatedDisconnectReportsDisconnectedNotConnectionLost();
     void connectionLossStopsPollingButKeepsTheLastValues();
     void autoReconnectRestoresTheConnectionAndResumesPolling();
+    void hardTransportLossEmitsConnectionLostSignalExactlyOnce();
+    void autoReconnectEmitsConnectionRestoredSignalExactlyOnce();
+    void freshInitialConnectDoesNotEmitConnectionRestored();
     void userDisconnectDuringConnectionLossStopsReconnectAttempts();
     void switchingToFavoritesModeStopsRoutingUpdatesToNormalSignal();
     void autoReconnectResumesFavoritesModeIfThatWasActive();
@@ -276,6 +279,75 @@ void ConnectionControllerTest::autoReconnectRestoresTheConnectionAndResumesPolli
     QVERIFY(controller.isPolling());
     QSignalSpy resumedSpy(&controller, &ConnectionController::holdingRegistersRead);
     QVERIFY(resumedSpy.wait(3000));
+}
+
+// connectionLost/connectionRestored exist so SessionLogger (M12a) can count
+// disconnects/reconnects without inferring them from generic stateChanged().
+void ConnectionControllerTest::hardTransportLossEmitsConnectionLostSignalExactlyOnce()
+{
+    FakeModbusServer server;
+    QVERIFY(server.listen());
+
+    ConnectionController controller;
+    controller.setConnectionType(ConnectionController::ConnectionType::Tcp);
+    controller.setHost(QStringLiteral("127.0.0.1"));
+    controller.setPort(server.port());
+    controller.setReconnectIntervalMs(10000); // keep reconnect out of this test
+    controller.connectToDevice();
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::Connected));
+
+    QSignalSpy lostSpy(&controller, &ConnectionController::connectionLost);
+
+    server.shutdown();
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::ConnectionLost));
+
+    QCOMPARE(lostSpy.count(), 1);
+}
+
+void ConnectionControllerTest::autoReconnectEmitsConnectionRestoredSignalExactlyOnce()
+{
+    FakeModbusServer server;
+    QVERIFY(server.listen());
+    const quint16 port = server.port();
+
+    ConnectionController controller;
+    controller.setConnectionType(ConnectionController::ConnectionType::Tcp);
+    controller.setHost(QStringLiteral("127.0.0.1"));
+    controller.setPort(port);
+    controller.setReconnectIntervalMs(100);
+    controller.connectToDevice();
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::Connected));
+
+    server.shutdown();
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::ConnectionLost));
+
+    QSignalSpy restoredSpy(&controller, &ConnectionController::connectionRestored);
+
+    FakeModbusServer restarted;
+    QVERIFY(restarted.listen(port));
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::Connected, 8000));
+
+    QCOMPARE(restoredSpy.count(), 1);
+}
+
+// The exact bug the self-review catch (m_resumePollingOnReconnect being a false
+// proxy for "was this a reconnect") would have caused: a fresh initial connect
+// must not be mistaken for a recovery.
+void ConnectionControllerTest::freshInitialConnectDoesNotEmitConnectionRestored()
+{
+    FakeModbusServer server;
+    QVERIFY(server.listen());
+
+    ConnectionController controller;
+    controller.setConnectionType(ConnectionController::ConnectionType::Tcp);
+    controller.setHost(QStringLiteral("127.0.0.1"));
+    controller.setPort(server.port());
+
+    QSignalSpy restoredSpy(&controller, &ConnectionController::connectionRestored);
+    controller.connectToDevice();
+    QVERIFY(waitForState(controller, ConnectionController::ConnectionState::Connected));
+
+    QCOMPARE(restoredSpy.count(), 0);
 }
 
 void ConnectionControllerTest::userDisconnectDuringConnectionLossStopsReconnectAttempts()

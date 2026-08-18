@@ -27,6 +27,8 @@ set(MODBUSVIEWER_APPLIB_SOURCES
     ${CMAKE_SOURCE_DIR}/app-lib/DisplaySettings.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/PollModeController.h
     ${CMAKE_SOURCE_DIR}/app-lib/PollModeController.cpp
+    ${CMAKE_SOURCE_DIR}/app-lib/SessionLogger.h
+    ${CMAKE_SOURCE_DIR}/app-lib/SessionLogger.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/TagDatabaseController.h
     ${CMAKE_SOURCE_DIR}/app-lib/TagDatabaseController.cpp
     ${CMAKE_SOURCE_DIR}/app-lib/ThemeSettings.h

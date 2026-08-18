@@ -75,6 +75,12 @@ Rectangle {
         tagDatabaseModel: tagDatabaseModel
     }
 
+    SaveLogFileDialog {
+        id: saveLogDialog
+        sessionLogger: sessionLogger
+        onStartFailed: statusLabel.text = "Error: could not open log file for writing"
+    }
+
     // One filter class, reused across the three lists despite their differing role
     // sets -- RegisterFilterProxyModel looks up label/description/address/unit by
     // name, skipping whichever a given source model doesn't expose.
@@ -95,6 +101,10 @@ Rectangle {
 
     CommunicationLogModel {
         id: communicationLogModel
+    }
+
+    SessionLogger {
+        id: sessionLogger
     }
 
     Connections {
@@ -120,9 +130,16 @@ Rectangle {
         }
         function onCommunicationLogged(direction, summary) {
             communicationLogModel.append(direction, summary)
+            sessionLogger.logCommunication(direction, summary)
         }
         function onRegisterReadFailed(reason) {
             registerModel.markStale()
+        }
+        function onConnectionLost() {
+            sessionLogger.recordDisconnect()
+        }
+        function onConnectionRestored() {
+            sessionLogger.recordReconnect()
         }
     }
 
@@ -290,6 +307,25 @@ Rectangle {
             ThemedButton {
                 text: "Disconnect"
                 onClicked: ConnectionController.disconnectFromDevice()
+            }
+
+            ThemedButton {
+                text: sessionLogger.isLogging ? "Stop Logging" : "Start Logging..."
+                onClicked: {
+                    if (sessionLogger.isLogging)
+                        sessionLogger.stopLogging()
+                    else
+                        saveLogDialog.open()
+                }
+            }
+
+            Text {
+                visible: sessionLogger.isLogging
+                text: "Logging to " + sessionLogger.logFilePath.split(/[\\/]/).pop()
+                    + " — " + sessionLogger.disconnectCount + " disconnect(s), " + sessionLogger.reconnectCount + " reconnect(s)"
+                color: Theme.textSecondary
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.fontSizeSm
             }
         }
 
