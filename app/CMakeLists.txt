@@ -44,6 +44,7 @@ qt_add_qml_module(ModbusViewer
         qml/controls/ThemedPopup.qml
         qml/controls/ThemedItemDelegate.qml
         qml/dialogs/ImportTagFileDialog.qml
+        qml/dialogs/SaveLogFileDialog.qml
     SOURCES
         ${MODBUSVIEWER_APPLIB_SOURCES}
 )

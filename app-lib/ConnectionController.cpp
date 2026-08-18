@@ -419,7 +419,15 @@ void ConnectionController::handleTransportConnectionStateChanged(bool connected)
 {
     if (connected) {
         m_reconnectTimer.stop();
+        // Captured before setState() so this only fires on a genuine recovery
+        // (ConnectionLost -> Connected), not a fresh initial connect (Connecting ->
+        // Connected) -- m_resumePollingOnReconnect looked like a ready-made flag for
+        // this but isn't, since it's only set when polling was active at the moment
+        // of loss.
+        const bool wasReconnect = (m_state == ConnectionState::ConnectionLost);
         setState(ConnectionState::Connected);
+        if (wasReconnect)
+            emit connectionRestored();
 
         // Coming back from a loss: pick the poll loop up where it left off, in
         // whichever mode was active -- m_activeFavoritesModel survived the pause
@@ -437,11 +445,17 @@ void ConnectionController::handleTransportConnectionStateChanged(bool connected)
     // Losing an established connection is not the same as the user ending one. Hold
     // the last values on screen, stop asking the device for more, and keep retrying.
     if (m_state == ConnectionState::Connected || m_state == ConnectionState::ConnectionLost) {
+        // Guards against re-firing while already ConnectionLost (e.g. a refused
+        // reconnect attempt routed here through handleTransportError()) -- only a
+        // genuine Connected -> ConnectionLost transition is a new disconnect.
+        const bool wasConnected = (m_state == ConnectionState::Connected);
         if (isPolling()) {
             m_resumePollingOnReconnect = true;
             stopPolling();
         }
         setState(ConnectionState::ConnectionLost);
+        if (wasConnected)
+            emit connectionLost();
         m_reconnectTimer.start(m_reconnectIntervalMs);
     }
 }

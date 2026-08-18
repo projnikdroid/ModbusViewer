@@ -6,3 +6,8 @@ pymodbus==3.7.4
 # Required for --mode rtu (pymodbus's serial transport depends on it directly,
 # but doesn't pull it in as its own dependency).
 pyserial
+
+# Used by excel_tags_to_csv.py to read the source .xlsx workbook.
+openpyxl==3.1.5
+# Used by test_excel_tags_to_csv.py.
+pytest==9.1.1

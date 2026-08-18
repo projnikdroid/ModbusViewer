@@ -1,0 +1,34 @@
+{
+  "sheets": {
+    "Sheet1": {
+      "columns": {
+        "Label": "label",
+        "Address": "address",
+        "Data Type": "format",
+        "Unit": "unit"
+      }
+    },
+    "Sheet2": {
+      "columns": {
+        "Label": "label",
+        "Address": "address",
+        "Data Type": "format",
+        "Unit": "unit"
+      }
+    }
+  },
+  "data_type_map": {
+    "uint16": "UnsignedDecimal",
+    "uint": "UnsignedDecimal",
+    "int": "SignedDecimal",
+    "float": "Float32",
+    "real32": "Float32",
+    "real": "Float32",
+    "onoffboolean": "BOOL"
+  },
+  "defaults": {
+    "byteOrder": "ABCD",
+    "scale": 1,
+    "offset": 0
+  }
+}

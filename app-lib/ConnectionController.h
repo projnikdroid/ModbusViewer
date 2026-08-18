@@ -124,6 +124,12 @@ public:
 
 signals:
     void stateChanged();
+    // Distinct from stateChanged(): SessionLogger (M12a) counts genuine
+    // disconnect/reconnect events, which a bare state comparison can't tell apart
+    // from a fresh initial connect or a repeated failed retry attempt (the latter
+    // never changes state at all, see handleTransportError()).
+    void connectionLost();
+    void connectionRestored();
     void errorMessageChanged();
     void canConnectChanged();
     void hostChanged();

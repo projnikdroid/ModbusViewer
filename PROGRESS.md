@@ -70,6 +70,75 @@ rationale behind every decision referenced here lives in the approved plan at
    commit is a push nudge to encourage GitHub to recompute it. Re-check the
    repo page if it's still wrong in a few days.
 
+**M12: Session log-to-file backend — done (2026-08-17), no GUI to verify yet
+(that's M12a).** Full design in the approved plan at
+`C:\Users\projn\.claude\plans\now-lets-add-more-linear-music.md`. Built exactly as
+designed, no deviations:
+
+- **`ConnectionController`** (`app-lib/ConnectionController.h/.cpp`): two new bare
+  signals, `connectionLost()` and `connectionRestored()`. Each is guarded by the
+  *prior* `ConnectionState`, captured in a local right before its corresponding
+  `setState()` call — `wasConnected` before `setState(ConnectionLost)`,
+  `wasReconnect` before `setState(Connected)` — so `connectionLost` only fires on a
+  genuine `Connected → ConnectionLost` transition (not a repeated retry-refusal
+  while already `ConnectionLost`) and `connectionRestored` only fires on
+  `ConnectionLost → Connected` (not a fresh initial `Connecting → Connected`). 3 new
+  tests (TDD): hard loss emits `connectionLost` exactly once, auto-recovery emits
+  `connectionRestored` exactly once, and a fresh initial connect emits
+  `connectionRestored` zero times (the exact bug the design's self-review catch —
+  `m_resumePollingOnReconnect` looking like a ready-made "was this a reconnect"
+  flag but actually only tracking whether polling was active — would have caused).
+- **`SessionLogger`** (new `app-lib/SessionLogger.h/.cpp`, `QML_ELEMENT`, not a
+  singleton — instantiated directly like `CommunicationLogModel`): `QFile` +
+  `QTextStream`, flushed after every write so the file is tail-able live and
+  crash-safe up to the last line. `isLogging` is derived (`m_stream != nullptr`)
+  rather than a separate tracked bool — one less place for the two to drift out of
+  sync. `startLogging(filePath)` accepts either a plain path or a `file:///...` URL
+  (via a small `toLocalPath()` helper, deliberately duplicated from
+  `TagDatabaseController.cpp`'s identical one rather than extracted — 2 call sites
+  doesn't clear this project's shared-utility bar yet), resets both counts to 0,
+  writes a header line, returns `false` without touching state if the file can't be
+  opened. `logCommunication()`/`recordDisconnect()`/`recordReconnect()` are all
+  no-ops while not logging, since QML (M12a) will call them unconditionally off
+  `ConnectionController`'s signals regardless of whether logging is active.
+  `stopLogging()` writes a footer with both final counts. 6 new tests (TDD):
+  open/set-flag, bad-path returns false, communication lines written only between
+  start/stop, disconnect/reconnect counts + event lines, footer summary content,
+  and a second `startLogging()` call resetting counts to 0 (proves per-session
+  scoping, not cumulative).
+
+24/24 suites green (up from 23). Build clean.
+
+**M12a: Session log-to-file QML wiring — done (2026-08-17), user GUI-verified**
+(disconnect/reconnect both correctly detected and counted, log file contents
+correct). Built per the plan, no deviations:
+
+- New `app/qml/dialogs/SaveLogFileDialog.qml`: `FileDialog.SaveFile`,
+  `defaultSuffix: "log"`, same nameFilters shape as `ImportTagFileDialog.qml`.
+  Takes a `sessionLogger` property rather than reaching for a global, and emits
+  its own `startFailed()` signal (rather than reading `statusLabel` directly,
+  which lives in a different component) for `MainScreen.qml` to react to.
+- `MainScreen.qml`: `SessionLogger { id: sessionLogger }` next to
+  `communicationLogModel`; `SaveLogFileDialog` next to `importTagDialog`, wired
+  to `sessionLogger` with `onStartFailed` setting `statusLabel.text`. The
+  existing `Connections { target: ConnectionController }` block gained three
+  handlers: `onCommunicationLogged` now also calls
+  `sessionLogger.logCommunication(...)` alongside the existing
+  `communicationLogModel.append(...)`; new `onConnectionLost`/
+  `onConnectionRestored` call `sessionLogger.recordDisconnect()`/
+  `recordReconnect()` unconditionally (safe no-ops when not logging, per
+  `SessionLogger`'s own design). Toolbar: one `ThemedButton` toggling
+  "Start Logging..."/"Stop Logging" off `sessionLogger.isLogging`, plus a
+  status `Text` (visible only while logging) showing the log file's basename
+  and live counts, e.g. "Logging to session1.log — 2 disconnect(s), 2
+  reconnect(s))".
+
+Build clean, 24/24 suites still green, headless launch check clean (app stayed
+up with an empty Debug console — no QML errors). User GUI-verified: started
+logging, killed `tools/pymodbus_simulator.py` mid-session (real disconnect
+detected and counted), restarted it (auto-reconnect detected and counted),
+stopped logging, confirmed the log file contents were correct.
+
 **M11-M11e: Two selectable app themes, "Glass HUD" and "Signal Console" —
 done (2026-07-30), user GUI-verified after a real bug-finding pass.** Full rationale
 and design in the approved plan at
@@ -294,6 +363,8 @@ see that file for the full narrative and design decisions behind each.
 | M11c | Themed control delegates (10 files) + swap-in | **Done**, user GUI-verified |
 | M11d | Hero-element polish (gradient accents, mono data fields, tracked labels) | **Done**, user GUI-verified |
 | M11e | Theme picker UI on both screens | **Done**, user GUI-verified |
+| M12 | Session log-to-file backend: `ConnectionController` disconnect/reconnect signals + `SessionLogger` (TDD) | **Done** |
+| M12a | Session log-to-file QML wiring: Save dialog, toolbar control, live counts | **Done**, user GUI-verified |
 
 ## Environment
 
