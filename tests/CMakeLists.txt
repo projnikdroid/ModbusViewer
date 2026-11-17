@@ -40,3 +40,5 @@ modbusviewer_add_applib_test(test_communication_log_model test_communication_log
 modbusviewer_add_applib_test(test_rtu_feature_suite test_rtu_feature_suite.cpp support/FakeTransport.h support/FakeTransport.cpp)
 modbusviewer_add_applib_test(test_theme_settings test_theme_settings.cpp)
 modbusviewer_add_applib_test(test_session_logger test_session_logger.cpp)
+
+add_subdirectory(qml)

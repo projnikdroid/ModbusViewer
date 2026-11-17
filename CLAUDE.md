@@ -44,6 +44,18 @@ $env:Path = "C:\Qt\6.11.1\mingw_64\bin;" + $env:Path
 & "C:\Users\projn\OneDrive\Desktop\Claude\Projects\ModbusViewer\build\ModbusViewer.exe"
 ```
 
+**QML behavior tests** live in `tests/qml/` (`test_qml_controls`, run by `ctest`
+with the rest). They exercise the app's *real* `.qml` files against stubs for
+`Theme`/`ConnectionController`/`SerialPortListModel` — see `PROGRESS.md` for how to
+add a control to them. Qt test executables print nothing through the bash tool's
+pipe; add `-o results.txt,txt` to read their output.
+
+**Launch checks**: the bash tool can't see the app's stderr, so a "no errors"
+result from `./ModbusViewer.exe > log 2>&1` proves nothing. Use PowerShell
+`Start-Process -PassThru -RedirectStandardError`, with `QT_QUICK_CONTROLS_STYLE=Basic`
+(the themed controls assume it), and stop only that process via `Stop-Process -Id`
+— never `taskkill /IM`, which closes every running copy, including the user's.
+
 ## Dev-time simulator
 
 `python` is not on this machine's `PATH` — use the full interpreter path:

@@ -118,6 +118,87 @@ designed, no deviations:
 
 24/24 suites green (up from 23). Build clean.
 
+**Bugfix (2026-11-17): typed values in every `ThemedSpinBox` never committed.**
+User report: typing `41080` into Normal mode's Start Address and pressing Enter,
+then clicking +/-, snapped the field back to 40001. Root cause: no SpinBox in the
+app sets `editable`, and Qt only commits typed text to `value` (Enter/focus-out)
+when `editable` is true. M11's earlier "every SpinBox is read-only" fix had only
+removed the `readOnly: !control.editable` gate on the contentItem — typing then
+*displayed* but never reached `value`, so the next +/- or binding re-evaluation
+reverted it. Affected all 9 SpinBoxes (Start Address, Quantity, Interval, ad-hoc
+address, port/unit ID/timeout/retries/etc. on the connection screen). Fix in
+`ThemedSpinBox.qml`: `editable: true` plus `readOnly: !control.editable` restored.
+Reproduced headlessly first (a scratch `qmltestrunner` case under the Basic style:
+`editable` unset → value stays 40001 after typing 41080 + Enter; `editable: true`
+→ commits 41080), not just reasoned about. Now covered by the in-repo QML test
+suite below. User verified the Start Address fix on a real RS-485 connection.
+
+**New: QML behavior test suite, `tests/qml/` → `test_qml_controls` (CTest, 25th
+suite; 20 tests — 13 SpinBox rows, 7 RtuSettingsPanel — 24 results counting the
+per-file init/cleanup).** Uses
+Qt's `QuickTest` (`quick_test_main` in `tests/qml/main.cpp`, which pins
+`QT_QUICK_CONTROLS_STYLE=Basic` — the themed controls only render correctly under
+it — and `QT_QPA_PLATFORM=offscreen` unless already set). The point is that it runs
+the app's **real** QML, not a re-implementation: `tests/qml/CMakeLists.txt` copies
+the real `ThemedSpinBox`/`ThemedComboBox`/`ThemedButton`/`ThemedItemDelegate` and
+`connection/RtuSettingsPanel.qml` into a throwaway `ModbusViewer` module under the
+build dir (`configure_file`, so editing a real file re-copies it), alongside stubs
+in `tests/qml/stubs/` for the three things they need that aren't QML:
+`Theme`, `ConnectionController`, `SerialPortListModel`. To cover another control,
+add its name to `QML_TEST_REAL_FILES` (plus any new `Theme.*` token to
+`stubs/Theme.qml` — a missing token only warns, it doesn't fail) and write a
+`tst_*.qml` there. Covers: typed SpinBox values commit on Enter/Tab/clicking another
+control (the Quantity/ad-hoc-address read-at-click case), +/- continue from a typed
+value (the reported 41080→40001 bug), out-of-range clamping, focusing and leaving
+every real field range changes nothing; baud-rate combo commits custom rates on
+Enter and on focus loss, reverts when emptied, rejects letters; parity combo labels
+0→"None", 2→"Even". **Mutation-checked**: reintroducing each original bug in the
+build-dir copies (drop `editable: true`; drop the focus-loss commit) makes 9 tests
+fail, including both reported bugs; restored → green. Added `objectName`s
+(`baudRateCombo`, `parityCombo`) to the real `RtuSettingsPanel.qml` so tests can find
+them; added `QuickTest` to the top-level `find_package`. Not exercised until a CI
+run: `ci.yml` installs Qt via aqt with only `qtserialport` named as an extra module —
+`QuickTest` ships with the base Qt install, but that's unverified there.
+
+**Input-commit audit (same session), prompted by the above:** every typed-input
+control was checked, with the app's real `ThemedSpinBox`/`ThemedComboBox`/
+`ThemedTextField` files run under `qmltestrunner` (stub `Theme` singleton, scratch
+only, not in-repo). All 9 SpinBoxes commit on Enter, Tab, and a click on another
+control with no Enter (needed: Quantity and the ad-hoc address are read at
+button-click time, not via `valueModified`), and out-of-range input is clamped.
+Host field commits on focus loss. **One more real bug found and fixed:**
+`RtuSettingsPanel`'s editable baud-rate combo only committed on Enter, so typing a
+custom rate and clicking Connect left the box showing a rate the connection wasn't
+using (silent mismatch — on a real bus this looks like "device not responding").
+It now also commits on focus loss, rejects non-digits via an `IntValidator`, and
+re-syncs the shown text to the effective rate if the entry is empty/invalid.
+**Known gap, deliberately not changed:** editing Start Address or Quantity *while
+Normal-mode polling is running* doesn't retarget the live poll until it's
+stopped/restarted (Interval, Type and Mode do take effect live). User verified
+both fixes on real hardware.
+
+**Default RTU parity changed Even → None (2026-11-17), per user request** — most
+real devices ship as 8N1. `ConnectionController::m_parity` and the
+`SerialPortSettings` struct default now agree on `NoParity` (the controller always
+overrides the struct, so it was dead data, but disagreeing defaults mislead);
+`docs/connection-ux.md` updated; the parity dropdown derives its selection from
+`ConnectionController.parity`, so it shows "None" with no QML change. TDD: new
+`defaultSerialParityIsNone` in `test_connection_controller.cpp`, confirmed red
+(actual 2 / expected 0) before the change. 24/24 suites green. Stop bits left at 1
+(the Modbus spec pairs no-parity with 2 stop bits, but 8N1 is what most devices
+actually use) — not changed since only parity was requested.
+
+**Verification-method correction:** earlier "headless launch clean" claims in this
+file's recent entries relied on `./ModbusViewer.exe > log 2>&1` from the bash tool,
+which turned out not to capture the app's stderr (Qt test executables printed
+nothing the same way). Use PowerShell `Start-Process -RedirectStandardError` instead,
+with `QT_QUICK_CONTROLS_STYLE=Basic`, and stop the process by its own PID (a
+`taskkill /IM` closes every running copy, including the user's). `main.cpp` never
+sets a Quick Controls style — the themed delegates assume Basic and, under the
+native Windows style, Qt logs "style does not support customization" for every
+themed control. Re-checked properly: the only real QML error on launch is the
+pre-existing one listed under Known rough edges below.
+
 **M12a: Session log-to-file QML wiring — done (2026-08-17), user GUI-verified**
 (disconnect/reconnect both correctly detected and counted, log file contents
 correct). Built per the plan, no deviations:
@@ -414,8 +495,23 @@ see that file for the full narrative and design decisions behind each.
   functionally but isn't atomic — a slave could see a torn intermediate value
   between the two writes. Add function-code-16 support to `ConnectionController`
   if/when that matters (flagged during M6, out of scope for its verify step).
-- RTU is implemented and unit-tested but has never run over a real serial link —
-  this machine has no serial ports at all. Needs a device or a com0com virtual pair.
+- RTU is implemented and unit-tested; it has now run over a real RS-485 link
+  (user-verified 2026-11-17, including the typed-baud and parity-default changes).
+- **`RtuSettingsPanel.qml:38` logs `Cannot assign [undefined] to QString` on every
+  launch when a serial adapter is present** (`portCombo`'s `onCountChanged` assigns
+  `currentValue` before it's defined). Harmless: `Component.onCompleted` then sets
+  the port correctly, and user-verified 2026-11-17 that plugging an adapter in
+  after launch + Rescan connects properly (a scratch test with a fake `ListModel`
+  had suggested otherwise; the real `SerialPortListModel` behaves differently).
+  Only the log noise remains; fix by guarding `currentValue !== undefined` if it
+  ever matters.
+- **Every `ThemedSpinBox` displays thousands separators** (`40,001`, `41,080`,
+  `1,502` for a TCP port, `1,000`) — Qt's default `textFromValue` formats with the
+  system locale's grouping. Pre-existing and cosmetic; typing and parsing round-trip
+  correctly (verified: focusing and leaving every real field range changes no
+  value). Trialled fix on a scratch copy: `locale: Qt.locale("C")` on
+  `ThemedSpinBox` gives plain digits with all typing/commit/clamp behavior intact.
+  Not applied to the repo yet.
 - **`ThemedCheckBox` ("Flash on update") shows what looks like two
   overlapping check-mark visuals when checked/hovered**, per direct user
   report (2026-07-30). Two rounds of investigation (Basic-style default
