@@ -1,4 +1,4 @@
-﻿# ModbusViewer — Progress
+# ModbusViewer — Progress
 
 Single source of truth for where the project stands. Read this first in any new
 session, then load only the specific `docs/*.md` topic file you need. The full
@@ -8,7 +8,24 @@ rationale behind every decision referenced here lives in the approved plan at
 ## Current status
 
 **Carried-over action items — still open, not part of this session's theme work:**
-1. **V1.3.0 released (2026-08-17)**: tagged `v1.3.0`, project version bumped
+1. **V1.3.1 released (2026-11-17)**: tagged `v1.3.1`, project version bumped
+   to 1.3.1 in `CMakeLists.txt`, packaged via the existing `windeployqt`
+   recipe, verified standalone (`PATH` stripped to bare `C:\Windows\System32`
+   — launched from PowerShell with the child's PATH set only for that
+   process), and published as a GitHub Release with the zip attached:
+   https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.3.1. A fix
+   release: typed values in every spin box now actually take effect (they
+   only displayed before — e.g. typing 41080 into Start Address then clicking
+   + jumped back to 40001); a custom baud rate typed into the RTU box now
+   commits on focus loss, not just Enter; and the default RTU parity is now
+   **None** (was Even) — **a visible behavior change**: anyone with an
+   Even-parity device now has to pick Even in the dropdown. User-verified on
+   a real RS-485 link. The new `test_qml_controls` suite (see above) ships
+   in the source only, not the executable. Because `v1.3.1` is a `v*` tag, the
+   tag push triggers the CI workflow, which has never run the new QML suite
+   (Qt there is 6.10.3 via aqt; `QuickTest` is expected in the base install
+   but unverified) — check `gh run list` for it.
+2. **V1.3.0 released (2026-08-17)**: tagged `v1.3.0`, project version bumped
    to 1.3.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
    recipe, verified standalone (same `PATH`-stripped check as prior
    releases), and published as a GitHub Release with the zip attached:
@@ -17,7 +34,7 @@ rationale behind every decision referenced here lives in the approved plan at
    plus `tools/excel_tags_to_csv.py` (a standalone dev tool converting an
    Excel register map to this project's `sampletags.csv` format — not part
    of the shipped app itself).
-2. **V1.2.0 released (2026-07-30)**: tagged `v1.2.0`, project version bumped
+3. **V1.2.0 released (2026-07-30)**: tagged `v1.2.0`, project version bumped
    to 1.2.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
    recipe, verified standalone (same `PATH`-stripped check as prior
    releases), and published as a GitHub Release with the zip attached:
@@ -30,13 +47,13 @@ rationale behind every decision referenced here lives in the approved plan at
    and the README's first real screenshots (`docs/screenshots/`, replacing
    the "coming soon" placeholder) covering Normal mode and both Favorites
    views.
-3. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
+4. **V1.1.0 released (2026-07-30)**: tagged `v1.1.0`, project version bumped
    to 1.1.0 in `CMakeLists.txt`, packaged via the existing `windeployqt`
    recipe (`packaging/windows/README.md`), verified standalone (launched with
    `PATH` stripped to bare `C:\Windows\System32`, same check as M8), and
    published as a GitHub Release with the zip attached:
    https://github.com/projnikdroid/ModbusViewer/releases/tag/v1.1.0.
-4. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
+5. **GitHub community/OSS setup completed (2026-07-30)**: `SECURITY.md`
    (private vulnerability reporting also enabled via repo settings),
    `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), `.github/ISSUE_TEMPLATE/`
    (bug report + feature request forms) and `.github/PULL_REQUEST_TEMPLATE.md`
@@ -46,21 +63,21 @@ rationale behind every decision referenced here lives in the approved plan at
    so the user created `Home` manually and the other two pages were pushed
    via `git` to `https://github.com/projnikdroid/ModbusViewer.wiki.git`,
    same repo credential already used for the main repo).
-5. **Check whether the merged CI+CodeQL workflow run actually passed** —
+6. **Check whether the merged CI+CodeQL workflow run actually passed** —
    `gh run view 30420317211 --repo projnikdroid/ModbusViewer` (or `gh run list`
    for whatever's latest on `main`) if this hasn't already been confirmed.
    Carried over from 2026-07-28, still not reverified — see the OSS-readiness
    entry in `docs/history.md` for the full saga if it needs revisiting.
-   **Note**: item 7 below changed when CI runs going forward, so a fresh
+   **Note**: item 8 below changed when CI runs going forward, so a fresh
    `gh run list` won't show one for ordinary commits anymore — this item is
    about that already-existing historical run, not a new one.
-6. **Fixed (2026-07-30) — was open here as "not yet investigated": Normal
+7. **Fixed (2026-07-30) — was open here as "not yet investigated": Normal
    mode's register table columns didn't reflow correctly on window resize.**
    Investigated and fixed as part of this session's M11 GUI-verification pass
    (real repro, not the original guess) — see the M11 narrative below for the
    actual root cause and fix (a `TextField` minimum-width floor plus missing
    `clip: true`, not the originally-suspected `columnWidthProvider`).
-7. **CI trigger narrowed (2026-07-30), per explicit user request.**
+8. **CI trigger narrowed (2026-07-30), per explicit user request.**
    `.github/workflows/ci.yml` no longer runs on every push to `main` or on
    every pull request — it was pure noise for a solo repo. Now runs only on
    a `v*` tag push (i.e. an actual release, same as `v1.1.0`), manually via
@@ -69,7 +86,7 @@ rationale behind every decision referenced here lives in the approved plan at
    longer get automatic CI validation. Fine for a solo maintainer; revisit
    (add `pull_request:` back, at least) if this project ever takes outside
    contributions, so contributor PRs get tested automatically again.
-8. **GitHub sidebar "Contributors" count is stale (2026-08-13) — not a repo
+9. **GitHub sidebar "Contributors" count is stale (2026-08-13) — not a repo
    problem.** The actual git history and the GitHub REST API
    (`repos/.../contributors`) both show only `projnikdroid`, 17 commits.
    The repo sidebar widget still lists two extra stale entries left over
