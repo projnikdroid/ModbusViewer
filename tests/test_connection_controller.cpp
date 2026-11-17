@@ -143,6 +143,7 @@ class ConnectionControllerTest : public QObject
     Q_OBJECT
 
 private slots:
+    void defaultSerialParityIsNone();
     void connectsToAReachableServer();
     void hardTransportLossReportsConnectionLostRatherThanDisconnected();
     void userInitiatedDisconnectReportsDisconnectedNotConnectionLost();
@@ -164,6 +165,14 @@ private slots:
     void reRequestingFavoritesPollingAfterAddingAnEntryPicksUpTheNewTarget();
     void unrelatedPollTimeoutDuringAOneShotCoilWriteDoesNotCorruptTheWriteResponse();
 };
+
+// Most real RS-485 devices ship as 8N1, so a fresh connection form should start
+// there rather than at the Modbus spec's Even-parity default.
+void ConnectionControllerTest::defaultSerialParityIsNone()
+{
+    ConnectionController controller;
+    QCOMPARE(controller.parity(), int(QSerialPort::NoParity));
+}
 
 void ConnectionControllerTest::connectsToAReachableServer()
 {

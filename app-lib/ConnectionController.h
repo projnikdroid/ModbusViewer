@@ -212,12 +212,13 @@ private:
     // was active.
     FavoritesModel *m_activeFavoritesModel = nullptr;
 
-    // Defaults per Decision 19: 115200 baud, 8 data bits, Even parity (the Modbus
-    // RTU spec's own default), 1 stop bit.
+    // Defaults: 115200 baud, 8 data bits, No parity, 1 stop bit (8N1). Decision 19
+    // originally picked Even (the Modbus RTU spec's own default), changed to None
+    // 2026-11-17 per user request -- most real devices actually ship as 8N1.
     QString m_portName;
     int m_baudRate = 115200;
     int m_dataBits = 8;
-    int m_parity = int(QSerialPort::EvenParity);
+    int m_parity = int(QSerialPort::NoParity);
     int m_stopBits = 1;
 
     // Tracks what kind of request is currently in flight so the transaction

@@ -18,8 +18,9 @@ while `ConnectionState == Connecting`. See plan Decision 19.
 ## Field defaults
 
 - **RTU**: Baud Rate **115200** (dropdown of common presets, editable), Data Bits 8,
-  Parity **Even** (the Modbus RTU spec's own default, overridable — many real devices
-  actually run None), Stop Bits 1, Flow Control None, Unit/Slave ID 1.
+  Parity **None** (changed from Even, the Modbus RTU spec's own default, on
+  2026-11-17 — most real devices actually ship as 8N1; still overridable in the
+  dropdown), Stop Bits 1, Flow Control None, Unit/Slave ID 1.
 - **TCP**: Host, Port (default 502), Unit ID.
 - **Both**: Timeout/Retry (Decision 18), `reconnectIntervalMs` (Decision 21).
 
