@@ -9,6 +9,13 @@ SpinBox {
     font.family: Theme.fontFamilyMono
     font.pixelSize: Theme.fontSizeMd
 
+    // Every SpinBox in this app is meant to be typed into directly. `editable`
+    // is what makes Qt commit typed text to `value` on Enter/focus-out -- without
+    // it the TextInput below still *displays* what was typed, but `value` never
+    // changes, so the next +/- (or any binding re-evaluation) snaps the field
+    // back to the old value (e.g. typing 41080 then pressing + reverted to 40001).
+    editable: true
+
     // Control positions contentItem inside the padding-inset content box
     // automatically; without these the default padding is far narrower than
     // the 26px indicators below, so the value text renders underneath/
@@ -25,10 +32,7 @@ SpinBox {
         selectedTextColor: Theme.background
         horizontalAlignment: Qt.AlignHCenter
         verticalAlignment: Qt.AlignVCenter
-        // Every SpinBox in this app relies on direct typing and never opts
-        // into `editable` (Qt Quick Controls' own default leaves typing
-        // available regardless) -- gating on it here made every field in
-        // this app read-only, a real regression, not a themed equivalent.
+        readOnly: !control.editable
         validator: control.validator
         inputMethodHints: Qt.ImhFormattedNumbersOnly
     }
