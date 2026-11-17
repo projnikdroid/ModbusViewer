@@ -54,11 +54,26 @@ ColumnLayout {
 
     Label { text: "Baud Rate"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
     ThemedComboBox {
+        objectName: "baudRateCombo" // looked up by tests/qml/tst_rtu_settings_panel.qml
         Layout.fillWidth: true
         editable: true
+        validator: IntValidator { bottom: 1; top: 4000000 }
         model: [1200, 2400, 4800, 9600, 19200, 38400, 57600, 115200]
         currentIndex: model.indexOf(ConnectionController.baudRate)
-        onAccepted: ConnectionController.baudRate = parseInt(editText)
+
+        // A custom rate has to take effect on focus loss as well as Enter:
+        // typing one and going straight to Connect never fires `accepted`,
+        // which left the box showing a rate the connection wasn't using. Also
+        // re-syncs the shown text to the effective rate, so an emptied or
+        // rejected entry can't leave the box displaying something else.
+        function commitTypedBaud() {
+            const baud = parseInt(editText)
+            if (!isNaN(baud) && baud > 0)
+                ConnectionController.baudRate = baud
+            editText = String(ConnectionController.baudRate)
+        }
+        onAccepted: commitTypedBaud()
+        onActiveFocusChanged: if (!activeFocus) commitTypedBaud()
         onActivated: ConnectionController.baudRate = model[currentIndex]
     }
 
@@ -72,6 +87,7 @@ ColumnLayout {
 
     Label { text: "Parity"; color: Theme.textSecondary; font.family: Theme.fontFamily; font.capitalization: Font.AllUppercase; font.letterSpacing: 0.6 }
     ThemedComboBox {
+        objectName: "parityCombo" // looked up by tests/qml/tst_rtu_settings_panel.qml
         Layout.fillWidth: true
         model: root.parityLabels
         currentIndex: root.parityValues.indexOf(ConnectionController.parity)
